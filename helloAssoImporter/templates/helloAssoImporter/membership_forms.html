@@ -1,0 +1,50 @@
+{% extends "helloAssoImporter/saison_base.html" %}
+{% block title %}Formulaires d'inscription{% endblock %}
+
+{% block saison_content %}
+<div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem;">
+    <h1 style="margin-bottom:0;">Formulaires d'inscription</h1>
+    <form method="post" action="{% url 'saison-refresh' %}" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Rafraîchir</button>
+    </form>
+</div>
+
+{% if membership_forms %}
+<table>
+    <thead>
+        <tr>
+            <th>Titre</th>
+            <th>Date de début</th>
+            <th>Date de fin</th>
+            <th>Saison</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for form in membership_forms %}
+        <tr>
+            <td><a href="{% url 'saison-form-detail' form.form_slug %}">{{ form.title }}</a></td>
+            <td>{{ form.start_date|date:"d/m/Y" }}</td>
+            <td>{{ form.end_date|date:"d/m/Y" }}</td>
+            <td>
+                <form method="post" action="{% url 'saison-assign' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_slug" value="{{ form.form_slug }}">
+                    <select name="season_id" onchange="this.form.submit()" style="padding:0.25rem 0.5rem; border:1px solid #ccc; border-radius:4px;">
+                        <option value="">—</option>
+                        {% for season in seasons %}
+                        <option value="{{ season.id }}" {% if form.season_id == season.id %}selected{% endif %}>
+                            {{ season.label }}{% if season.current %} ★{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#999;">Aucun formulaire d'adhésion. Cliquez sur Rafraîchir pour importer depuis HelloAsso.</p>
+{% endif %}
+{% endblock %}
