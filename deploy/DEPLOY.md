@@ -9,12 +9,9 @@ Le serveur n'a besoin ni de Python ni du code source : seulement Docker, `docker
 Sur GitHub : **Actions → Publish Docker image → Run workflow** (branche `main`).
 Deux tags sont publiés : `latest` et `sha-<commit>`.
 
-> Le dépôt étant privé, le package GHCR l'est aussi. Deux options :
-> - le rendre public (GitHub → Packages → tp-formation-suivi → Package settings → Change visibility) :
->   aucun login nécessaire sur le serveur, comme pour Juliettia ;
-> - ou le laisser privé et se connecter une fois sur le serveur avec un token GitHub
->   (classic PAT, scope `read:packages`) :
->   `echo <TOKEN> | docker login ghcr.io -u BertrandMiannay --password-stdin`
+> Le dépôt est public : l'image peut l'être aussi, et le serveur la récupère alors sans login (comme Juliettia).
+> Après la **première** publication, vérifier sur GitHub → Packages → `tp-formation-suivi` → Package settings
+> que la visibilité est « Public » (sinon « Change visibility » → Public). Les publications suivantes la conservent.
 
 ## 2. Installer sur le serveur
 
@@ -22,7 +19,9 @@ Prérequis : Docker (avec le plugin compose) et nginx.
 
 ```bash
 mkdir -p ~/tp-formation-suivi && cd ~/tp-formation-suivi
-# récupérer docker-compose.yml et .env.example depuis le dépôt (scp, ou copier-coller)
+curl -fsSLO https://raw.githubusercontent.com/BertrandMiannay/Tp-formation-suivi/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/BertrandMiannay/Tp-formation-suivi/main/.env.example
+curl -fsSL https://raw.githubusercontent.com/BertrandMiannay/Tp-formation-suivi/main/deploy/nginx.conf -o nginx.conf
 cp .env.example .env
 nano .env   # SECRET_KEY, ALLOWED_HOSTS, premier administrateur
 docker compose pull
@@ -38,7 +37,7 @@ L'application écoute sur `127.0.0.1:8000` (modifiable via `APP_PORT`), uniqueme
 ## 3. Nginx et HTTPS
 
 ```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/tp-formation-suivi   # adapter server_name
+sudo cp nginx.conf /etc/nginx/sites-available/tp-formation-suivi   # adapter server_name
 sudo ln -s /etc/nginx/sites-available/tp-formation-suivi /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d <domaine>
