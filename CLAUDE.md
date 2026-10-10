@@ -21,6 +21,14 @@ python manage.py test
 
 Settings require `SECRET_KEY` unless `DEBUG=True` (dev). `DATABASE_URL` is optional (SQLite by default).
 
+## Docker / déploiement
+
+- `Dockerfile` (python:3.13-slim, Poetry sans venv, `collectstatic` au build, utilisateur non-root, SQLite dans le volume `/data`).
+- `docker/entrypoint.sh` : `migrate` à chaque démarrage + création optionnelle du superuser (`DJANGO_SUPERUSER_*`), puis gunicorn.
+- `docker-compose.yml` : service `web`, image `ghcr.io/bertrandmiannay/tp-formation-suivi:${IMAGE_TAG:-latest}`, port `127.0.0.1:${APP_PORT:-8000}`, nginx sur l'hôte (`deploy/nginx.conf`).
+- `.github/workflows/docker-publish.yml` (manuel) publie `latest` + `sha-<commit>` ; `ci.yml` : tests, check migrations, build image.
+- Mise à jour serveur : `docker compose pull && docker compose up -d`. Voir `deploy/DEPLOY.md`.
+
 ## Architecture
 
 ### Django Apps

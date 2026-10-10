@@ -1,0 +1,21 @@
+# Service web permanent. Sur le serveur :
+#   docker compose pull && docker compose up -d     # installer / mettre à jour
+#   docker compose logs -f                          # logs
+#
+# L'image est publiée sur GHCR par le workflow « Publish Docker image ».
+# `docker compose build` permet aussi de la construire localement.
+services:
+  web:
+    image: ghcr.io/bertrandmiannay/tp-formation-suivi:${IMAGE_TAG:-latest}
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # Exposé uniquement en local : nginx (sur l'hôte) fait le HTTPS et le proxy.
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    volumes:
+      - data:/data
+
+volumes:
+  data:

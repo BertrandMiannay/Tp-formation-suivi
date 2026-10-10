@@ -80,4 +80,12 @@ python manage.py test
 python manage.py createsuperuser
 ```
 
-Déploiement : voir `deploy/DEPLOY.md`.
+## Docker
+
+Image publiée sur GHCR par le workflow **Publish Docker image** (déclenchement manuel) :
+`ghcr.io/bertrandmiannay/tp-formation-suivi:latest`.
+
+Sur le serveur : `docker compose pull && docker compose up -d` (migrations appliquées au démarrage,
+base SQLite dans un volume). Détails : `deploy/DEPLOY.md`.
+
+La CI (`.github/workflows/ci.yml`) lance les tests, vérifie les migrations et construit l'image à chaque push sur `main` et sur les PR.
