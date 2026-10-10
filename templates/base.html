@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}TpManagement{% endblock %}</title>
+    <title>{% block title %}Suivi formation{% endblock %}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; }
@@ -52,17 +52,18 @@
 <body>
 <nav>
     {% if user.is_authenticated %}
-        <a href="/" class="brand">TP manager</a>
+        <a href="/" class="brand">Suivi formation</a>
+        {% if user.is_club_staff %}
+            <a href="{% url 'suivi-sessions' %}">Séances</a>
+            <a href="{% url 'suivi-students' %}">Élèves</a>
+        {% endif %}
+        {% if user.student_profile %}
+            <a href="{% url 'suivi-mine' %}">Mon suivi</a>
+        {% endif %}
         {% if user.is_administrator or user.is_superuser %}
-            <a href="{% url 'saison-formulaires' %}">Gestion du club</a>
+            <a href="{% url 'saison-gestion' %}">Saisons et formations</a>
             <a href="/users/">Utilisateurs</a>
         {% endif %}
-        <a href="/inscriptions/">Sorties</a>
-        {% if user.is_club_staff %}
-            <a href="{% url 'adherents' %}">Adhérents</a>
-            <a href="{% url 'suivi-sessions' %}">Suivi des élèves</a>
-        {% endif %}
-        <a href="{% url 'suivi-mine' %}">Mon suivi</a>
         <span class="spacer"></span>
         <a href="{% url 'userManagement:change_password' %}">{{ user.username }}</a>
         <a href="/accounts/logout/">Déconnexion</a>

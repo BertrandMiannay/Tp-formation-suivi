@@ -46,6 +46,33 @@ club_staff_required = _make_permission_decorator(_is_club_staff)
 User = get_user_model()
 
 
+def create_invited_user(email, group_name=None):
+    """Crée un compte inactif avec un lien d'invitation (le mot de passe est choisi à l'acceptation)."""
+    token = uuid.uuid4()
+    user = User.objects.create(
+        username=str(token),
+        email=email,
+        is_active=False,
+        invite_token=token,
+        invite_expires_at=timezone.now() + timedelta(days=INVITE_EXPIRY_DAYS),
+    )
+    if group_name:
+        user.groups.add(Group.objects.get(name=group_name))
+    return user
+
+
+def renew_invitation(user):
+    user.invite_token = uuid.uuid4()
+    user.invite_expires_at = timezone.now() + timedelta(days=INVITE_EXPIRY_DAYS)
+    user.save(update_fields=['invite_token', 'invite_expires_at'])
+
+
+def invite_url_for(request, user):
+    if not user.invite_token:
+        return None
+    return request.build_absolute_uri(reverse('userManagement:accept_invite', args=[user.invite_token]))
+
+
 def _check_passwords_match(cleaned_data, field1, field2):
     p1 = cleaned_data.get(field1)
     p2 = cleaned_data.get(field2)
@@ -58,32 +85,37 @@ class HomeView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        is_admin = self.request.user.is_administrator
+        user = self.request.user
         ctx['apps'] = [
-
             {
-                'title': 'Utilisateurs',
-                'description': 'Gérer les comptes, les rôles et les invitations.',
-                'url': '/users/',
-                'visible': is_admin,
-            },
-            {
-                'title': 'Inscriptions',
-                'description': "Consulter les formulaires d'adhésion et les membres importés depuis HelloAsso.",
-                'url': '/inscriptions/',
-                'visible': True,
-            },
-            {
-                'title': 'Suivi des élèves',
-                'description': 'Séances hebdomadaires : appel, compétences travaillées, exercices et notes.',
+                'title': 'Séances',
+                'description': 'Séances hebdomadaires : appel, compétences travaillées par élève, notes.',
                 'url': '/suivi/',
-                'visible': self.request.user.is_club_staff,
+                'visible': user.is_club_staff,
+            },
+            {
+                'title': 'Élèves',
+                'description': 'Fiches élèves : présences, compétences, exercices, notes. Création des comptes élèves.',
+                'url': '/suivi/eleves/',
+                'visible': user.is_club_staff,
             },
             {
                 'title': 'Mon suivi',
                 'description': 'Mes présences, compétences, exercices et remarques des encadrants.',
                 'url': '/suivi/mon-suivi/',
-                'visible': True,
+                'visible': hasattr(user, 'student_profile'),
+            },
+            {
+                'title': 'Saisons et formations',
+                'description': 'Gérer les saisons et les cursus (catégories, compétences).',
+                'url': '/gestion/',
+                'visible': user.is_administrator or user.is_superuser,
+            },
+            {
+                'title': 'Utilisateurs',
+                'description': 'Gérer les comptes, les rôles et les invitations.',
+                'url': '/users/',
+                'visible': user.is_administrator or user.is_superuser,
             },
         ]
         return ctx
@@ -194,17 +226,8 @@ class InviteView(AdminRequiredMixin, FormView):
             form.add_error('email', 'Un utilisateur avec cet email existe déjà.')
             return self.form_invalid(form)
 
-        token = uuid.uuid4()
-        invite_url = self.request.build_absolute_uri(
-            reverse('userManagement:accept_invite', args=[token])
-        )
-        User.objects.create(
-            username=str(token),
-            email=email,
-            is_active=False,
-            invite_token=token,
-            invite_expires_at=timezone.now() + timedelta(days=INVITE_EXPIRY_DAYS),
-        )
+        user = create_invited_user(email)
+        invite_url = invite_url_for(self.request, user)
         logger.info("INVITE_SENT to=%s by=%s expires_in=%dd",
                     email, self.request.user.username, INVITE_EXPIRY_DAYS)
         return self.render_to_response(self.get_context_data(

@@ -14,17 +14,49 @@
             {% for f in formations %} <span class="badge badge-cursus">{{ f.name }}</span>{% endfor %}
         </p>
     </div>
-    {% if is_current_member %}
-    <a href="{% url 'adherent-detail' member.pk %}?tab=formation" class="btn btn-secondary">Évaluer les compétences</a>
-    {% endif %}
+    <div style="display:flex; gap:0.5rem;">
+        <a href="{% url 'eleve-edit' member.pk %}" class="btn btn-secondary">Modifier</a>
+        <a href="{% url 'eleve-evaluation' member.pk %}" class="btn btn-secondary">Évaluer les compétences</a>
+    </div>
 </div>
 
 <div class="suivi-tabs" id="student-tabs" style="margin-bottom:1.5rem;">
+    <a href="#infos" data-tab="infos">Informations</a>
     <a href="#presences" data-tab="presences">Présences</a>
     <a href="#competences" data-tab="competences">Compétences</a>
     <a href="#exercices" data-tab="exercices">Exercices ({{ exercises|length }})</a>
     <a href="#notes" data-tab="notes">Notes ({{ notes|length }})</a>
 </div>
+
+<section id="tab-infos" class="student-tab">
+    {% if invite_url %}
+    <div class="card" style="border-left:4px solid #f59e0b;">
+        <h2>Compte élève en attente d'activation</h2>
+        <p class="muted" style="font-size:0.9rem; margin-bottom:0.5rem;">Transmettez ce lien à l'élève pour qu'il choisisse son identifiant et son mot de passe{% if member.user.invite_expires_at %} (valable jusqu'au {{ member.user.invite_expires_at|date:"d/m/Y" }}){% endif %}.</p>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <input type="text" id="invite-url" value="{{ invite_url }}" readonly style="flex:1; min-width:240px; font-size:0.85rem; background:#f8f9fa;">
+            <button type="button" class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('invite-url').value).then(() => { this.textContent='Copié !'; setTimeout(() => this.textContent='Copier', 2000); })">Copier</button>
+            <form method="post" action="{% url 'eleve-edit' member.pk %}" class="inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="_action" value="renew_invite">
+                <button type="submit" class="btn btn-secondary">Nouveau lien</button>
+            </form>
+        </div>
+    </div>
+    {% elif not member.user %}
+    <div class="card" style="border-left:4px solid #f59e0b;"><p>Aucun compte rattaché : renseignez un email via « Modifier » pour créer le compte élève.</p></div>
+    {% endif %}
+    <table style="max-width:600px;">
+        <tbody>
+            <tr><th style="width:45%;">Email</th><td>{{ member.email|default:"—" }}</td></tr>
+            <tr><th>Compte</th><td>{% if member.user.is_active %}{{ member.user.username }}{% elif member.user %}invitation envoyée{% else %}—{% endif %}</td></tr>
+            <tr><th>Date de naissance</th><td>{{ member.birthdate|date:"d/m/Y"|default:"—" }}</td></tr>
+            <tr><th>Certificat médical</th><td>{{ member.medical_certificate_date|date:"d/m/Y"|default:"—" }}</td></tr>
+            <tr><th>Contact d'urgence</th><td>{{ member.emergency_contact_name|default:"—" }}{% if member.emergency_contact_phone %} — {{ member.emergency_contact_phone }}{% endif %}</td></tr>
+            <tr><th>Saisons</th><td>{% for s in member.seasons.all %}<span class="badge badge-cursus">{{ s.label }}</span> {% empty %}—{% endfor %}</td></tr>
+        </tbody>
+    </table>
+</section>
 
 <section id="tab-presences" class="student-tab">
     {% include "suivi/_attendance_history.html" %}
@@ -104,7 +136,7 @@
 
 <script>
 (function () {
-    const tabs = ['presences', 'competences', 'exercices', 'notes'];
+    const tabs = ['infos', 'presences', 'competences', 'exercices', 'notes'];
     function show(name) {
         if (!tabs.includes(name)) name = 'presences';
         tabs.forEach(function (t) {

@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from helloAssoImporter.models import Cursus, Member, MemberSkill, Season, Skill
+from formation.models import Cursus, Member, MemberSkill, Season, Skill
 
 
 class TrainingSession(models.Model):
@@ -34,7 +34,7 @@ class TrainingSession(models.Model):
         if cursus_ids:
             members = members.filter(formations__in=cursus_ids)
         if self.season_id:
-            members = members.filter(membershipformorder__form__season_id=self.season_id)
+            members = members.filter(seasons=self.season_id)
         expected = members.values_list('pk', flat=True)
         recorded = self.attendances.values_list('member_id', flat=True)
         return (

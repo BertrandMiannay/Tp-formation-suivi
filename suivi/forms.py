@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 
-from helloAssoImporter.models import Cursus, Skill
+from formation.models import Cursus, Skill
 from .models import Exercise, StudentNote, TrainingSession
 
 

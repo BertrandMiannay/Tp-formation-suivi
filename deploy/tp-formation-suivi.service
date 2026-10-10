@@ -1,0 +1,19 @@
+[Unit]
+Description=Suivi formation
+After=network.target
+
+[Service]
+User=<your-user>
+Group=<your-user>
+WorkingDirectory=/home/<your-user>/Tp-formation-suivi
+EnvironmentFile=/etc/tp-formation-suivi/env
+ExecStart=/home/<your-user>/Tp-formation-suivi/.venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/run/tp-formation-suivi/gunicorn.sock \
+    config.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+RuntimeDirectory=tp-formation-suivi
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

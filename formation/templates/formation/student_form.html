@@ -1,0 +1,38 @@
+{% extends "suivi/base.html" %}
+
+{% block title %}{% if member %}Modifier {{ member }}{% else %}Nouvel élève{% endif %}{% endblock %}
+
+{% block suivi_content %}
+<a href="{% if member %}{% url 'suivi-student-detail' member.pk %}#infos{% else %}{% url 'suivi-students' %}{% endif %}" class="btn btn-secondary" style="margin-bottom:1.5rem;">← Retour</a>
+<h1>{% if member %}Modifier {{ member.first_name }} {{ member.last_name }}{% else %}Nouvel élève{% endif %}</h1>
+
+<form method="post" class="card" style="max-width:800px;">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="grid-2">
+        <div class="form-group"><label for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>{{ form.first_name }}{{ form.first_name.errors }}</div>
+        <div class="form-group"><label for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>{{ form.last_name }}{{ form.last_name.errors }}</div>
+    </div>
+    <div class="form-group">
+        <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}
+        {% if not member %}<p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">Un compte élève est créé avec cette adresse ; un lien d'invitation vous sera donné pour qu'il choisisse son mot de passe.</p>{% endif %}
+    </div>
+    <div class="grid-2">
+        <div class="form-group"><label for="{{ form.birthdate.id_for_label }}">{{ form.birthdate.label }}</label>{{ form.birthdate }}{{ form.birthdate.errors }}</div>
+        <div class="form-group"><label for="{{ form.medical_certificate_date.id_for_label }}">{{ form.medical_certificate_date.label }}</label>{{ form.medical_certificate_date }}{{ form.medical_certificate_date.errors }}</div>
+        <div class="form-group"><label for="{{ form.emergency_contact_name.id_for_label }}">{{ form.emergency_contact_name.label }}</label>{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
+        <div class="form-group"><label for="{{ form.emergency_contact_phone.id_for_label }}">{{ form.emergency_contact_phone.label }}</label>{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
+        <div class="form-group checkbox-list">
+            <label>{{ form.formations.label }}</label>{{ form.formations }}{{ form.formations.errors }}
+            {% if not form.formations.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucun cursus actif (Saisons et formations → Formations).</p>{% endif %}
+        </div>
+        <div class="form-group checkbox-list">
+            <label>{{ form.seasons.label }}</label>{{ form.seasons }}{{ form.seasons.errors }}
+            {% if not form.seasons.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucune saison (Saisons et formations → Saisons).</p>{% endif %}
+        </div>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{% if member %}Enregistrer{% else %}Créer l'élève{% endif %}</button>
+    </div>
+</form>
+{% endblock %}

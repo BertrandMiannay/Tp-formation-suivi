@@ -8,8 +8,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from helloAssoImporter.models import Cursus, Member, MemberSkill, Season, Skill, SkillEvaluation
-from userManagement.views import club_staff_required
+from formation.models import Cursus, Member, MemberSkill, Season, Skill, SkillEvaluation
+from userManagement.views import club_staff_required, invite_url_for
 from .forms import ExerciseForm, StudentNoteForm, TrainingSessionForm
 from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
 
@@ -24,7 +24,7 @@ def _students(season=None, cursus_id=None):
     """Élèves = adhérents de la saison inscrits à au moins une formation."""
     qs = Member.objects.filter(formations__isnull=False)
     if season:
-        qs = qs.filter(membershipformorder__form__season=season)
+        qs = qs.filter(seasons=season)
     if cursus_id:
         qs = qs.filter(formations=cursus_id)
     return qs.distinct().order_by('last_name', 'first_name')
@@ -317,7 +317,7 @@ def session_detail(request, pk):
 
     roster_ids = [m.pk for m in roster]
     addable_members = (
-        Member.objects.filter(membershipformorder__form__season=session.season) if session.season_id else Member.objects.all()
+        Member.objects.filter(seasons=session.season) if session.season_id else Member.objects.all()
     ).exclude(pk__in=roster_ids).distinct().order_by('last_name', 'first_name')
 
     return render(request, 'suivi/session_detail.html', {
@@ -412,7 +412,7 @@ def student_list(request):
 
 @club_staff_required
 def student_detail(request, pk):
-    member = get_object_or_404(Member, pk=pk)
+    member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
     exercise_form = ExerciseForm(member=member, initial={'date': timezone.localdate()})
     note_form = StudentNoteForm(member=member, initial={'date': timezone.localdate()})
     open_form = None
@@ -465,7 +465,6 @@ def student_detail(request, pk):
         attendances = attendances.filter(session__season=season)
     attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date', '-session__pk')))
 
-    is_current_member = member.membershipformorder_set.filter(form__season__current=True).exists()
 
     return render(request, 'suivi/student_detail.html', {
         'member': member,
@@ -477,7 +476,7 @@ def student_detail(request, pk):
         'exercise_form': exercise_form,
         'note_form': note_form,
         'open_form': open_form,
-        'is_current_member': is_current_member,
+        'invite_url': invite_url_for(request, member.user) if member.user_id and not member.user.is_active else None,
         'season': season,
         'active_tab': 'eleves',
     })
@@ -489,9 +488,8 @@ def student_detail(request, pk):
 
 @login_required
 def my_tracking(request):
-    """Fiche de suivi de l'élève connecté (rapprochement par adresse email)."""
-    email = (request.user.email or '').strip()
-    members = Member.objects.filter(email__iexact=email).order_by('first_name') if email else Member.objects.none()
+    """Fiche de suivi de l'élève connecté (fiche rattachée à son compte)."""
+    members = Member.objects.filter(user=request.user)
     season = _current_season()
     sheets = []
     for member in members:
