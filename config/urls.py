@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
+from formation.urls import student_urlpatterns
 from userManagement.views import HomeView
 
 urlpatterns = [
@@ -7,9 +8,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),
     path('invitations/', include('invitations.urls', namespace='invitations')),
-    path('inscriptions/', include('helloAssoImporter.urls')),
-    path('saison/', include('helloAssoImporter.membres_urls')),
-    path('adherents/', include('helloAssoImporter.adherents_urls')),
+    path('gestion/', include('formation.urls')),
+    path('eleves/', include(student_urlpatterns)),
     path('suivi/', include('suivi.urls')),
     path('users/', include('userManagement.urls')),
 ]

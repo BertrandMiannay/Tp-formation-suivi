@@ -16,7 +16,7 @@
     <div class="form-group checkbox-list">
         <label>{{ form.cursus.label }}</label>
         {{ form.cursus }}{{ form.cursus.errors }}
-        {% if not form.cursus.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucun cursus actif (Gestion du club → Formations).</p>{% endif %}
+        {% if not form.cursus.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucun cursus actif (Saisons et formations → Formations).</p>{% endif %}
     </div>
     <div class="form-group checkbox-list">
         <label>{{ form.instructors.label }}</label>

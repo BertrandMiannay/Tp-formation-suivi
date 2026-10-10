@@ -1,3 +1,5 @@
+> ⚠️ Document hérité de TP-manager (intégration HelloAsso). À mettre à jour pour Tp-formation-suivi : les données ne proviennent plus de HelloAsso et sont saisies directement dans l'application.
+
 # Conformité RGPD — TP Manager
 
 ## Contexte

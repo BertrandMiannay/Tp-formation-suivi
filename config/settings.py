@@ -45,7 +45,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS = [
     'userManagement.apps.UsermanagementConfig',
-    'helloAssoImporter.apps.HelloassoimporterConfig',
+    'formation.apps.FormationConfig',
     'suivi.apps.SuiviConfig',
     'django.contrib.admin',
     'django.contrib.auth',

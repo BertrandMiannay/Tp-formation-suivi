@@ -1,0 +1,543 @@
+import json
+import logging
+from urllib.parse import quote
+
+from django import forms
+from django.contrib import messages
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Count, Max
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+
+from formation.models import Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation
+from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Élèves
+# ---------------------------------------------------------------------------
+
+class StudentForm(forms.ModelForm):
+    email = forms.EmailField(label='Email (identifiant du compte élève)')
+
+    class Meta:
+        model  = Member
+        fields = ['first_name', 'last_name', 'birthdate', 'medical_certificate_date',
+                  'emergency_contact_name', 'emergency_contact_phone', 'formations', 'seasons']
+        widgets = {
+            'birthdate': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'medical_certificate_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'formations': forms.CheckboxSelectMultiple,
+            'seasons': forms.CheckboxSelectMultiple,
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cursus_qs = Cursus.objects.filter(status=Cursus.Status.ACTIVE)
+        if self.instance.pk:
+            cursus_qs = cursus_qs | self.instance.formations.all()
+            self.fields['email'].initial = self.instance.email
+        self.fields['formations'].queryset = cursus_qs.distinct().order_by('name')
+        self.fields['seasons'].queryset = Season.objects.order_by('-current', '-label')
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        User = get_user_model()
+        others = User.objects.filter(email__iexact=email)
+        if self.instance.user_id:
+            others = others.exclude(pk=self.instance.user_id)
+        owner = others.filter(student_profile__isnull=False).first()
+        if owner:
+            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre élève.")
+        if self.instance.user_id and others.exists():
+            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
+        return email
+
+
+@club_staff_required
+def student_create(request):
+    if request.method == 'POST':
+        form = StudentForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            with transaction.atomic():
+                member = form.save()
+                # Compte existant sans fiche (ex. encadrant qui suit une formation) : on le rattache.
+                user = get_user_model().objects.filter(email__iexact=email).first()
+                if user is None:
+                    user = create_invited_user(email, group_name='member')
+                member.user = user
+                member.save(update_fields=['user'])
+            logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk, request.user.username)
+            messages.success(request, f"Élève {member} créé." + (
+                " Transmettez-lui le lien d'invitation pour qu'il choisisse son mot de passe." if not user.is_active else ""
+            ))
+            return redirect('suivi-student-detail', pk=member.pk)
+    else:
+        current = Season.objects.filter(current=True).first()
+        form = StudentForm(initial={'seasons': [current.pk] if current else []})
+    return render(request, 'formation/student_form.html', {'form': form, 'member': None})
+
+
+@club_staff_required
+def student_edit(request, pk):
+    member = get_object_or_404(Member, pk=pk)
+    if request.method == 'POST':
+        if request.POST.get('_action') == 'renew_invite':
+            if member.user_id and not member.user.is_active:
+                renew_invitation(member.user)
+                messages.success(request, "Nouveau lien d'invitation généré (valable 7 jours).")
+            return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
+        form = StudentForm(request.POST, instance=member)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            with transaction.atomic():
+                form.save()
+                if member.user_id is None:
+                    member.user = create_invited_user(email, group_name='member')
+                    member.save(update_fields=['user'])
+                elif member.user.email != email:
+                    member.user.email = email
+                    member.user.save(update_fields=['email'])
+            logger.info("STUDENT_EDIT pk=%s by=%s", member.pk, request.user.username)
+            messages.success(request, "Fiche élève mise à jour.")
+            return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
+    else:
+        form = StudentForm(instance=member)
+    return render(request, 'formation/student_form.html', {'form': form, 'member': member})
+
+
+@club_staff_required
+def evaluation(request, pk):
+    member = get_object_or_404(Member, pk=pk)
+    formations_qs = member.formations.prefetch_related('categories__skills').all()
+    skill_ids = [s.pk for f in formations_qs for c in f.categories.all() for s in c.skills.all()]
+    member_skills_map = {
+        ms.skill_id: ms.status
+        for ms in MemberSkill.objects.filter(member=member, skill_id__in=skill_ids)
+    }
+    evaluations_map = {}
+    for ev in SkillEvaluation.objects.filter(member=member, skill_id__in=skill_ids).select_related('author').order_by('-date', '-pk'):
+        evaluations_map.setdefault(ev.skill_id, []).append({
+            'pk': ev.pk,
+            'author': (ev.author.get_full_name() or ev.author.username) if ev.author else '',
+            'date': ev.date,
+            'status': ev.status,
+            'status_display': ev.get_status_display(),
+            'comment': ev.comment,
+        })
+    formations = []
+    for cursus in formations_qs:
+        categories = []
+        for category in cursus.categories.all():
+            skills = [
+                {
+                    'pk': s.pk,
+                    'name': s.name,
+                    'status': member_skills_map.get(s.pk, MemberSkill.SkillStatus.NOT_ACQUIRED),
+                    'evaluations': evaluations_map.get(s.pk, []),
+                }
+                for s in category.skills.all()
+            ]
+            categories.append({'name': category.name, 'skills': skills})
+        formations.append({'pk': cursus.pk, 'name': cursus.name, 'categories': categories})
+    return render(request, 'formation/evaluation.html', {
+        'member': member,
+        'formations': formations,
+        'status_choices': MemberSkill.SkillStatus.choices,
+        'active_tab': 'eleves',
+    })
+
+
+# ---------------------------------------------------------------------------
+# Saisons et formations (administration)
+# ---------------------------------------------------------------------------
+
+@admin_required
+def season_gestion(request):
+    form_data = {}
+    if request.method == 'POST':
+        label = request.POST.get('label', '').strip()
+        if label:
+            Season.objects.create(label=label)
+            return redirect('saison-gestion')
+        form_data = {'label': label}
+    seasons = Season.objects.all().order_by('-current', 'label')
+    return render(request, 'formation/season_gestion.html', {
+        'seasons': seasons,
+        'form_data': form_data,
+        'active_tab': 'gestion',
+    })
+
+
+@admin_required
+def set_current_season(request, pk):
+    if request.method == 'POST':
+        Season.objects.update(current=False)
+        Season.objects.filter(pk=pk).update(current=True)
+    return redirect('saison-gestion')
+
+
+@admin_required
+def delete_season(request, pk):
+    if request.method == 'POST':
+        season = Season.objects.filter(pk=pk).first()
+        if season:
+            logger.info("SEASON_DELETE pk=%s label=%s by=%s", pk, season.label, request.user.username)
+            season.delete()
+    return redirect('saison-gestion')
+
+
+@admin_required
+def formation_list(request):
+    cursus_list = Cursus.objects.annotate(
+        category_count=Count('categories'),
+    ).order_by('status', '-date')
+    return render(request, 'formation/formation.html', {
+        'cursus_list': cursus_list,
+        'active_tab': 'formation',
+    })
+
+
+@admin_required
+def cursus_create(request):
+    error = None
+    form_data = {}
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        date_str = request.POST.get('date', '').strip()
+        form_data = {'name': name, 'date': date_str}
+        if not name:
+            error = "Le nom du cursus est obligatoire."
+        elif not date_str:
+            error = "La date de version est obligatoire."
+        else:
+            from datetime import date as date_cls
+            try:
+                parsed_date = date_cls.fromisoformat(date_str)
+            except ValueError:
+                error = "Format de date invalide (attendu : AAAA-MM-JJ)."
+            else:
+                cursus = Cursus.objects.create(name=name, date=parsed_date)
+                logger.info("CURSUS_CREATE pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
+                messages.success(request, f"Cursus « {cursus.name} » créé.")
+                return redirect('saison-cursus-detail', pk=cursus.pk)
+    return render(request, 'formation/cursus_create.html', {
+        'error': error,
+        'form_data': form_data,
+        'active_tab': 'formation',
+    })
+
+
+@admin_required
+def cursus_detail(request, pk):
+    cursus = get_object_or_404(Cursus, pk=pk)
+
+    if request.method == 'POST':
+        action = request.POST.get('_action')
+
+        if action == 'edit_cursus':
+            name = request.POST.get('name', '').strip()
+            date_str = request.POST.get('date', '').strip()
+            if name and date_str:
+                from datetime import date as date_cls
+                try:
+                    cursus.name = name
+                    cursus.date = date_cls.fromisoformat(date_str)
+                    cursus.save(update_fields=['name', 'date'])
+                    messages.success(request, "Cursus mis à jour.")
+                except ValueError:
+                    messages.error(request, "Format de date invalide.")
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'add_category':
+            name = request.POST.get('category_name', '').strip()
+            if name:
+                max_order = cursus.categories.aggregate(m=Max('order'))['m'] or 0
+                CursusCategory.objects.create(cursus=cursus, name=name, order=max_order + 1)
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'delete_category':
+            cat_pk = request.POST.get('category_pk')
+            CursusCategory.objects.filter(pk=cat_pk, cursus=cursus).delete()
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'reorder_categories':
+            order_list = request.POST.getlist('category_order')
+            with transaction.atomic():
+                for i, cat_pk in enumerate(order_list, start=1):
+                    CursusCategory.objects.filter(pk=cat_pk, cursus=cursus).update(order=i)
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'add_skill':
+            cat_pk = request.POST.get('category_pk')
+            name = request.POST.get('skill_name', '').strip()
+            if name and cat_pk:
+                category = get_object_or_404(CursusCategory, pk=cat_pk, cursus=cursus)
+                max_order = category.skills.aggregate(m=Max('order'))['m'] or 0
+                Skill.objects.create(category=category, name=name, order=max_order + 1)
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'delete_skill':
+            skill_pk = request.POST.get('skill_pk')
+            Skill.objects.filter(pk=skill_pk, category__cursus=cursus).delete()
+            return redirect('saison-cursus-detail', pk=pk)
+
+        elif action == 'reorder_skills':
+            cat_pk = request.POST.get('category_pk')
+            order_list = request.POST.getlist('skill_order')
+            with transaction.atomic():
+                for i, skill_pk in enumerate(order_list, start=1):
+                    Skill.objects.filter(pk=skill_pk, category_id=cat_pk).update(order=i)
+            return redirect('saison-cursus-detail', pk=pk)
+
+    categories = cursus.categories.prefetch_related('skills').all()
+    cursus_json = json.dumps({
+        'name': cursus.name,
+        'date': cursus.date.isoformat(),
+        'categories': [
+            {
+                'name': cat.name,
+                'skills': [{'name': skill.name} for skill in cat.skills.all()],
+            }
+            for cat in categories
+        ],
+    }, indent=2, ensure_ascii=False)
+    return render(request, 'formation/cursus_detail.html', {
+        'cursus': cursus,
+        'categories': categories,
+        'cursus_json': cursus_json,
+        'active_tab': 'formation',
+    })
+
+
+@admin_required
+def cursus_archive(request, pk):
+    if request.method == 'POST':
+        cursus = get_object_or_404(Cursus, pk=pk)
+        if cursus.status == Cursus.Status.ACTIVE:
+            cursus.status = Cursus.Status.ARCHIVED
+            action_label = "archivé"
+        else:
+            cursus.status = Cursus.Status.ACTIVE
+            action_label = "réactivé"
+        cursus.save(update_fields=['status'])
+        logger.info("CURSUS_STATUS pk=%s status=%s by=%s", cursus.pk, cursus.status, request.user.username)
+        messages.success(request, f"Cursus « {cursus.name} » {action_label}.")
+    return redirect('saison-formation')
+
+
+@admin_required
+def cursus_import_json(request):
+    error = None
+    json_text = ''
+    if request.method == 'POST':
+        json_text = request.POST.get('json_data', '').strip()
+        try:
+            data = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            error = f"JSON invalide : {e}"
+        else:
+            name = str(data.get('name', '')).strip()
+            date_str = str(data.get('date', '')).strip()
+            categories_raw = data.get('categories', [])
+            if not name:
+                error = "Le champ « name » est obligatoire."
+            elif not date_str:
+                error = "Le champ « date » est obligatoire (format AAAA-MM-JJ)."
+            elif not isinstance(categories_raw, list):
+                error = "Le champ « categories » doit être une liste."
+            else:
+                from datetime import date as date_cls
+                try:
+                    parsed_date = date_cls.fromisoformat(date_str)
+                except ValueError:
+                    error = "Format de date invalide (attendu : AAAA-MM-JJ)."
+                else:
+                    with transaction.atomic():
+                        cursus = Cursus.objects.create(name=name, date=parsed_date)
+                        for cat_order, cat_data in enumerate(categories_raw, start=1):
+                            cat_name = str(cat_data.get('name', '')).strip()
+                            if not cat_name:
+                                continue
+                            category = CursusCategory.objects.create(
+                                cursus=cursus, name=cat_name, order=cat_order
+                            )
+                            for skill_order, skill_data in enumerate(cat_data.get('skills', []), start=1):
+                                skill_name = str(skill_data.get('name', '')).strip()
+                                if skill_name:
+                                    Skill.objects.create(
+                                        category=category, name=skill_name, order=skill_order
+                                    )
+                    logger.info("CURSUS_IMPORT pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
+                    messages.success(request, f"Cursus « {cursus.name} » importé avec succès.")
+                    return redirect('saison-cursus-detail', pk=cursus.pk)
+    return render(request, 'formation/formation_import.html', {
+        'error': error,
+        'json_text': json_text,
+        'active_tab': 'importer',
+    })
+
+
+@club_staff_required
+def evaluation_save(request, pk, cursus_pk):
+    if request.method != 'POST':
+        return redirect('eleve-evaluation', pk=pk)
+    from django.utils import timezone as tz
+    member = get_object_or_404(Member, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=cursus_pk)
+    valid_statuses = set(dict(MemberSkill.SkillStatus.choices))
+    skills = Skill.objects.filter(category__cursus=cursus)
+    today = tz.localdate()
+    current = {
+        ms.skill_id: ms.status
+        for ms in MemberSkill.objects.filter(member=member, skill__in=skills)
+    }
+    for skill in skills:
+        status = request.POST.get(f'skill_{skill.pk}_status', MemberSkill.SkillStatus.NOT_ACQUIRED)
+        if status not in valid_statuses:
+            status = MemberSkill.SkillStatus.NOT_ACQUIRED
+        comment = request.POST.get(f'skill_{skill.pk}_comment', '').strip()
+        MemberSkill.objects.update_or_create(
+            member=member, skill=skill,
+            defaults={'status': status},
+        )
+        if comment or status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
+            SkillEvaluation.objects.create(
+                member=member, skill=skill,
+                date=today, status=status, comment=comment,
+                author=request.user,
+            )
+    return redirect('eleve-evaluation', pk=pk)
+
+
+@club_staff_required
+def evaluation_export(request, pk, cursus_pk):
+    import io
+    from django.http import HttpResponse
+    from django.utils.formats import date_format
+    from xml.sax.saxutils import escape
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    member = get_object_or_404(Member, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=cursus_pk)
+
+    categories = (
+        cursus.categories
+        .prefetch_related('skills__member_skills', 'skills__evaluations')
+        .all()
+    )
+    member_skills = {
+        ms.skill_id: ms
+        for ms in MemberSkill.objects.filter(member=member, skill__category__cursus=cursus)
+    }
+    evaluations_by_skill = {}
+    for ev in SkillEvaluation.objects.filter(member=member, skill__category__cursus=cursus).select_related('author').order_by('-date'):
+        evaluations_by_skill.setdefault(ev.skill_id, []).append(ev)
+
+    STATUS_LABELS = {
+        MemberSkill.SkillStatus.NOT_ACQUIRED: 'Non acquis',
+        MemberSkill.SkillStatus.IN_PROGRESS:  "En cours",
+        MemberSkill.SkillStatus.ACQUIRED:     'Acquis',
+    }
+
+    styles = getSampleStyleSheet()
+    small = ParagraphStyle('small', parent=styles['Normal'], fontSize=8, leading=10)
+    small_grey = ParagraphStyle('small_grey', parent=small, textColor=colors.HexColor('#6b7280'))
+    bold_cat = ParagraphStyle('bold_cat', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold')
+    header_style = ParagraphStyle('header', parent=styles['Normal'], fontSize=8, leading=10, fontName='Helvetica-Bold')
+
+    COL_WIDTHS = [8 * cm, 3 * cm, 7.5 * cm]
+
+    table_data = [[
+        Paragraph('Compétence', header_style),
+        Paragraph('Statut', header_style),
+        Paragraph('Commentaires', header_style),
+    ]]
+
+    row_styles = []
+    current_row = 1
+
+    for category in categories:
+        table_data.append([
+            Paragraph(category.name, bold_cat),
+            '', '',
+        ])
+        row_styles.append(('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#f3f4f6')))
+        row_styles.append(('SPAN', (0, current_row), (-1, current_row)))
+        current_row += 1
+
+        for skill in category.skills.all():
+            ms = member_skills.get(skill.pk)
+            status_label = STATUS_LABELS.get(ms.status if ms else None, 'Non acquis')
+            evs = evaluations_by_skill.get(skill.pk, [])
+
+            comment_lines = []
+            for ev in evs:
+                date_str = date_format(ev.date, 'd/m/Y')
+                if ev.author:
+                    date_str += f" · {escape(ev.author.get_full_name() or ev.author.username)}"
+                line = f"<font color='#9ca3af'>{date_str}</font>"
+                comment_lines.append(f"{line} {escape(ev.comment)}" if ev.comment else line)
+            comment_para = Paragraph('<br/>'.join(comment_lines), small_grey) if comment_lines else ''
+
+            table_data.append([
+                Paragraph(skill.name, small),
+                Paragraph(status_label, small),
+                comment_para,
+            ])
+            current_row += 1
+
+    table = Table(table_data, colWidths=COL_WIDTHS, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND',   (0, 0), (-1, 0),  colors.HexColor('#1a1a2e')),
+        ('TEXTCOLOR',    (0, 0), (-1, 0),  colors.white),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9fafb')]),
+        ('GRID',         (0, 0), (-1, -1), 0.4, colors.HexColor('#e5e7eb')),
+        ('VALIGN',       (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING',   (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING',(0, 0), (-1, -1), 4),
+        ('LEFTPADDING',  (0, 0), (-1, -1), 6),
+        *row_styles,
+    ]))
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+        leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+    )
+
+    title_style = ParagraphStyle('title', parent=styles['Heading1'], fontSize=14, spaceAfter=12)
+
+    story = [
+        Paragraph(cursus.name, title_style),
+        table,
+    ]
+    doc.build(story)
+
+    buf.seek(0)
+    raw_name = f"evaluation_{member.last_name}_{member.first_name}_{cursus.name}.pdf"
+    safe_ascii = raw_name.replace('"', '').replace('\n', '').replace('\r', '')
+    response = HttpResponse(buf, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(raw_name)}"
+    )
+    return response
+
+
+@club_staff_required
+def evaluation_delete(request, pk, ev_pk):
+    if request.method != 'POST':
+        return redirect('eleve-evaluation', pk=pk)
+    ev = get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk)
+    cursus_pk = ev.skill.category.cursus_id
+    ev.delete()
+    return redirect('eleve-evaluation', pk=pk)

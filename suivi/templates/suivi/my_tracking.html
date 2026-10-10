@@ -31,6 +31,6 @@
     {% endfor %}
     {% endwith %}
 {% empty %}
-<p class="muted">Aucune fiche de suivi n'est associée à votre compte. La fiche est retrouvée grâce à l'adresse email utilisée lors de votre adhésion ({{ user.email|default:"aucune adresse renseignée" }}).</p>
+<p class="muted">Aucune fiche élève n'est rattachée à votre compte. Si vous suivez une formation, demandez à un encadrant de vous créer une fiche avec votre adresse email ({{ user.email|default:"non renseignée" }}).</p>
 {% endfor %}
 {% endblock %}

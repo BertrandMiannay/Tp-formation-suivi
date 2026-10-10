@@ -4,10 +4,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
 
-from helloAssoImporter.models import (
-    Cursus, CursusCategory, Member, MemberShipForm, MemberShipFormOrder, MemberSkill, Season, Skill, SkillEvaluation,
+from formation.models import (
+    Cursus, CursusCategory, Member, MemberSkill, Season, Skill, SkillEvaluation,
 )
 from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
 
@@ -24,28 +23,24 @@ class SuiviTestCase(TestCase):
         cls.student_user.groups.add(Group.objects.get(name='member'))
 
         cls.season = Season.objects.create(label='2026-2027', current=True)
-        now = timezone.now()
-        form = MemberShipForm.objects.create(
-            form_slug='adhesion', title='Adhésion', form_type='Membership', description='',
-            start_date=now, end_date=now, updated_at=now, created_at=now, season=cls.season,
-        )
         cls.cursus = Cursus.objects.create(name='Niveau 1', date=date(2026, 1, 1))
         other_cursus = Cursus.objects.create(name='Niveau 2', date=date(2026, 1, 1))
         cat = CursusCategory.objects.create(cursus=cls.cursus, name='Technique')
         cls.skill_a = Skill.objects.create(category=cat, name='Vidage de masque', order=1)
         cls.skill_b = Skill.objects.create(category=cat, name='Lâcher / reprise embout', order=2)
 
-        cls.alice = Member.objects.create(email='alice@example.com', first_name='Alice', last_name='Martin')
-        cls.bob = Member.objects.create(email='bob@example.com', first_name='Bob', last_name='Durand')
-        cls.carol = Member.objects.create(email='carol@example.com', first_name='Carol', last_name='Petit')
+        cls.alice = Member.objects.create(user=cls.student_user, first_name='Alice', last_name='Martin')
+        cls.bob = Member.objects.create(first_name='Bob', last_name='Durand')
+        cls.carol = Member.objects.create(first_name='Carol', last_name='Petit')
         cls.alice.formations.add(cls.cursus)
         cls.bob.formations.add(cls.cursus)
         cls.carol.formations.add(other_cursus)
-        for i, m in enumerate([cls.alice, cls.bob, cls.carol], start=1):
-            MemberShipFormOrder.objects.create(
-                item_id=i, order_id=i, form=form, member=m, payer_email=m.email,
-                payer_first_name=m.first_name, payer_last_name=m.last_name, updated_at=now, created_at=now,
-            )
+        for m in [cls.alice, cls.bob, cls.carol]:
+            m.seasons.add(cls.season)
+        # Élève d'une autre saison : jamais attendu
+        old = Member.objects.create(first_name='Dan', last_name='Ancien')
+        old.formations.add(cls.cursus)
+        old.seasons.add(Season.objects.create(label='2025-2026'))
 
     def setUp(self):
         self.client.force_login(self.instructor)
@@ -179,8 +174,8 @@ class SuiviTestCase(TestCase):
         self.assertFalse(TrainingSession.objects.exists())
         self.assertFalse(Attendance.objects.exists())
 
-    def test_adherent_page_traces_status_changes_with_author(self):
-        url = reverse('adherent-formation-save', args=[self.alice.pk, self.cursus.pk])
+    def test_evaluation_page_traces_status_changes_with_author(self):
+        url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
         # Changement de statut sans commentaire : historisé avec l'auteur
         self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'in_progress'})
         ev = SkillEvaluation.objects.get()
@@ -189,9 +184,81 @@ class SuiviTestCase(TestCase):
         self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'in_progress'})
         self.assertEqual(SkillEvaluation.objects.count(), 1)
 
-        resp = self.client.get(reverse('adherent-detail', args=[self.alice.pk]))
+        resp = self.client.get(reverse('eleve-evaluation', args=[self.alice.pk]))
         self.assertContains(resp, 'par moniteur')
         resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
         self.assertContains(resp, ' · moniteur')
-        resp = self.client.get(reverse('adherent-formation-export', args=[self.alice.pk, self.cursus.pk]))
+        resp = self.client.get(reverse('eleve-evaluation-export', args=[self.alice.pk, self.cursus.pk]))
         self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_create_student_creates_invited_account(self):
+        resp = self.client.post(reverse('eleve-create'), {
+            'first_name': 'Eve', 'last_name': 'Nouvelle', 'email': 'Eve@Example.com',
+            'formations': [self.cursus.pk], 'seasons': [self.season.pk],
+        })
+        eve = Member.objects.get(first_name='Eve')
+        self.assertRedirects(resp, reverse('suivi-student-detail', args=[eve.pk]))
+        self.assertEqual(eve.email, 'eve@example.com')
+        self.assertFalse(eve.user.is_active)
+        self.assertTrue(eve.user.groups.filter(name='member').exists())
+
+        resp = self.client.get(reverse('suivi-student-detail', args=[eve.pk]))
+        accept_url = reverse('userManagement:accept_invite', args=[eve.user.invite_token])
+        self.assertContains(resp, accept_url)
+
+        # L'élève active son compte puis voit sa fiche
+        self.client.logout()
+        self.client.post(accept_url, {'username': 'eve', 'password1': 'S3cret-pass!', 'password2': 'S3cret-pass!'})
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, 'Mon suivi')
+        self.assertContains(resp, 'Niveau 1')
+
+    def test_student_email_must_be_unique_among_students(self):
+        resp = self.client.post(reverse('eleve-create'), {
+            'first_name': 'X', 'last_name': 'Y', 'email': 'alice@example.com', 'seasons': [self.season.pk],
+        })
+        self.assertContains(resp, 'déjà utilisée par un autre élève')
+        self.assertFalse(Member.objects.filter(first_name='X').exists())
+
+    def test_edit_student_and_renew_invite(self):
+        url = reverse('eleve-edit', args=[self.bob.pk])
+        self.client.post(url, {'first_name': 'Bob', 'last_name': 'Durand', 'email': 'bob@example.com',
+                               'formations': [self.cursus.pk], 'seasons': [self.season.pk]})
+        self.bob.refresh_from_db()
+        self.assertEqual(self.bob.email, 'bob@example.com')
+        token = self.bob.user.invite_token
+        self.client.post(url, {'_action': 'renew_invite'})
+        self.bob.user.refresh_from_db()
+        self.assertNotEqual(self.bob.user.invite_token, token)
+
+    def test_my_tracking_without_profile(self):
+        self.client.force_login(self.instructor)
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, 'Aucune fiche élève')
+
+    def test_admin_pages_render(self):
+        admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        self.client.force_login(admin)
+        for name, args in [
+            ('home', []), ('saison-gestion', []), ('saison-formation', []), ('saison-cursus-creer', []),
+            ('saison-cursus-importer', []), ('saison-cursus-detail', [self.cursus.pk]),
+            ('eleve-create', []), ('eleve-edit', [self.alice.pk]), ('suivi-sessions', []),
+        ]:
+            self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 200, name)
+        # Les formateurs n'ont pas accès à la gestion des saisons et formations
+        self.client.force_login(self.instructor)
+        self.assertRedirects(self.client.get(reverse('saison-gestion')), reverse('home'), fetch_redirect_response=False)
+
+    def test_students_cannot_access_management_or_evaluation(self):
+        self.client.force_login(self.student_user)
+        for name, args in [
+            ('saison-gestion', []), ('saison-formation', []), ('saison-cursus-detail', [self.cursus.pk]),
+            ('eleve-create', []), ('eleve-edit', [self.alice.pk]), ('eleve-evaluation', [self.alice.pk]),
+            ('eleve-evaluation-save', [self.alice.pk, self.cursus.pk]),
+            ('eleve-evaluation-export', [self.alice.pk, self.cursus.pk]),
+        ]:
+            for method in (self.client.get, self.client.post):
+                resp = method(reverse(name, args=args))
+                self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False, msg_prefix=name)
+        self.assertFalse(MemberSkill.objects.exists())

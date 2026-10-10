@@ -1,6 +1,38 @@
+# Tp-formation-suivi
+
+Suivi des élèves en formation plongée : séances hebdomadaires, présences, compétences travaillées
+et validées par élève, exercices, notes (équipe encadrante ou visibles par l'élève).
+
+Issu de [TP-manager](https://github.com/BertrandMiannay/TP-manager), sans l'intégration HelloAsso :
+les élèves sont créés directement dans l'application.
+
+## Démarrage
+
+```
+poetry install
+DEBUG=True poetry run python manage.py init_dev_db   # base neuve + superutilisateur admin/admin
+DEBUG=True poetry run python manage.py runserver
+```
+
+Puis : **Saisons et formations** → créer une saison (la marquer active) et un cursus,
+**Élèves** → **+ Nouvel élève** (un lien d'invitation est généré pour qu'il choisisse son mot de passe),
+**Séances** → **+ Nouvelle séance**.
+
+## Fonctionnement
+
+- **Élève** : fiche (`formation.Member`) rattachée à un compte utilisateur du rôle `member`.
+  Il est inscrit à une ou plusieurs saisons et prépare un ou plusieurs niveaux (cursus).
+- **Séance** : date, niveaux préparés, encadrants. Les élèves attendus sont ceux de la saison qui préparent l'un de ces niveaux.
+- **Appel** : présent / absent / absent excusé, avec commentaire.
+- **Compétences** : saisies par élève et par séance (travaillée, évaluation du jour, commentaire).
+  Une évaluation met à jour le statut de l'élève et est historisée avec son auteur.
+- **Exercices et notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
+- **Mon suivi** : l'élève connecté voit ses présences, compétences, exercices et les notes qui lui sont destinées.
+- **Export PDF** de l'évaluation par cursus.
+
 ## Importer une formation (JSON)
 
-L'onglet **Importer formation** (section Gestion du club) permet de créer un cursus complet en collant du JSON.
+**Saisons et formations → Formations → Importer** permet de créer un cursus complet en collant du JSON.
 
 ```json
 {
@@ -32,38 +64,20 @@ Champs :
 
 ## Rôles utilisateurs
 
-| Rôle | Label | Gestion des utilisateurs | Sorties |
-|------|-------|--------------------------|---------|
-| `admin` | Administrateur | Oui (inviter, changer les rôles, supprimer) | Oui |
-| `member` | Membre | Non | Oui |
-| `instructor` | Formateur | Non | Oui |
-| `dive_director` | Directeur de plongée | Non | Oui |
+| Rôle | Label | Accès |
+|------|-------|-------|
+| `admin` | Administrateur | Tout, dont saisons/formations et utilisateurs |
+| `instructor` | Formateur | Séances, élèves, évaluations |
+| `dive_director` | Directeur de plongée | Séances, élèves, évaluations |
+| `member` | Membre / élève | « Mon suivi » (lecture seule) |
 
-## Run local server
+## Commandes utiles
+
 ```
+python manage.py makemigrations formation suivi
 python manage.py migrate
-python manage.py runserver
+python manage.py test
+python manage.py createsuperuser
 ```
 
-
-## Manage migration
-```
- python manage.py makemigrations helloAssoImporter
-python manage.py migrate
-```
-
-### Rever migration
-```
-./manage.py migrate helloAssoImporter zero
-```
-
-
-### Create super user
-```
- python manage.py createsuperuser  
- ```
-
- ### Reset database
-  ```
- python manage.py init_dev_db
-  ```
+Déploiement : voir `deploy/DEPLOY.md`.

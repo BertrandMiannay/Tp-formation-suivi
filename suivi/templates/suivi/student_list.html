@@ -5,12 +5,15 @@
 {% block suivi_content %}
 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
     <h1 style="margin:0;">Élèves{% if season %} — {{ season.label }}{% endif %}</h1>
+    <div style="display:flex; gap:0.75rem; align-items:center;">
+    <a href="{% url 'eleve-create' %}" class="btn btn-primary">+ Nouvel élève</a>
     <form method="get">
         <select name="cursus" onchange="this.form.submit()" style="width:auto;">
             <option value="">Tous les niveaux</option>
             {% for c in cursus_list %}<option value="{{ c.pk }}" {% if c.pk == cursus_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
         </select>
     </form>
+    </div>
 </div>
 
 <input type="text" id="search" placeholder="Rechercher un élève…" style="max-width:400px; margin-bottom:1rem;">
@@ -40,6 +43,6 @@ document.getElementById('search').addEventListener('input', function () {
 });
 </script>
 {% else %}
-<p class="muted">Aucun élève : associez des formations aux membres de la saison (Gestion du club → Membres).</p>
+<p class="muted">Aucun élève pour la saison en cours : créez-en un avec « + Nouvel élève » (en lui associant au moins une formation et la saison).</p>
 {% endif %}
 {% endblock %}

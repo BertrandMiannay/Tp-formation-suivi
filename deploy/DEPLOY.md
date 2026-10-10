@@ -8,8 +8,8 @@
 ## 1. Cloner et installer
 
 ```bash
-git clone https://github.com/BertrandMiannay/helloAssoManager.git ~/helloAssoManager
-cd ~/helloAssoManager
+git clone https://github.com/BertrandMiannay/Tp-formation-suivi.git ~/Tp-formation-suivi
+cd ~/Tp-formation-suivi
 python3 -m venv .venv
 .venv/bin/pip install poetry
 .venv/bin/poetry install --only main
@@ -18,18 +18,18 @@ python3 -m venv .venv
 ## 2. Variables d'environnement
 
 ```bash
-sudo mkdir /etc/helloasso
-sudo cp deploy/env.example /etc/helloasso/env
-sudo nano /etc/helloasso/env  # remplir SECRET_KEY, ALLOWED_HOSTS=<domaine>, etc.
-sudo chmod 666 /etc/helloasso/env  
+sudo mkdir /etc/tp-formation-suivi
+sudo cp deploy/env.example /etc/tp-formation-suivi/env
+sudo nano /etc/tp-formation-suivi/env  # remplir SECRET_KEY, ALLOWED_HOSTS=<domaine>, etc.
+sudo chmod 666 /etc/tp-formation-suivi/env  
 ```
 
 ## 3. Préparer l'app
 
-Les variables d'environnement de `/etc/helloasso/env` doivent être chargées avant de lancer les commandes Django :
+Les variables d'environnement de `/etc/tp-formation-suivi/env` doivent être chargées avant de lancer les commandes Django :
 
 ```bash
-set -a && source /etc/helloasso/env && set +a
+set -a && source /etc/tp-formation-suivi/env && set +a
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --no-input
 .venv/bin/python manage.py init_dev_db  # crée le superuser admin/admin
@@ -37,19 +37,19 @@ set -a && source /etc/helloasso/env && set +a
 
 ## 4. Lancer gunicorn via systemd
 
-Avant de copier le service, remplacer `<your-user>` par ton nom d'utilisateur dans `deploy/helloasso.service`.
+Avant de copier le service, remplacer `<your-user>` par ton nom d'utilisateur dans `deploy/tp-formation-suivi.service`.
 
 ```bash
-sudo cp deploy/helloasso.service /etc/systemd/system/
+sudo cp deploy/tp-formation-suivi.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now helloasso
-sudo systemctl status helloasso
+sudo systemctl enable --now tp-formation-suivi
+sudo systemctl status tp-formation-suivi
 ```
 
 ## 5. Nginx + HTTPS (Let's Encrypt)
 
 ```bash
-sudo nano /etc/nginx/sites-available/helloasso
+sudo nano /etc/nginx/sites-available/tp-formation-suivi
 ```
 
 Contenu initial (remplacer `<domaine>` par le vrai domaine, ex: `botouraineplongee.ddns.net`) :
@@ -60,7 +60,7 @@ server {
     server_name <domaine>;
 
     location / {
-        proxy_pass http://unix:/run/helloasso/gunicorn.sock;
+        proxy_pass http://unix:/run/tp-formation-suivi/gunicorn.sock;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -69,7 +69,7 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/helloasso /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/tp-formation-suivi /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -85,7 +85,7 @@ Certbot modifie automatiquement la config Nginx pour ajouter le bloc HTTPS et la
 
 ### Variables d'environnement à activer après HTTPS
 
-Dans `/etc/helloasso/env` :
+Dans `/etc/tp-formation-suivi/env` :
 
 ```
 SESSION_COOKIE_SECURE=True
@@ -93,7 +93,7 @@ CSRF_COOKIE_SECURE=True
 ```
 
 ```bash
-sudo systemctl restart helloasso
+sudo systemctl restart tp-formation-suivi
 ```
 
 L'app est accessible sur `https://<domaine>`.
@@ -101,21 +101,21 @@ L'app est accessible sur `https://<domaine>`.
 ## Mise à jour
 
 ```bash
-cd ~/helloAssoManager
+cd ~/Tp-formation-suivi
 git pull
 .venv/bin/poetry install --only main
-set -a && source /etc/helloasso/env && set +a
+set -a && source /etc/tp-formation-suivi/env && set +a
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --no-input
-sudo systemctl restart helloasso
+sudo systemctl restart tp-formation-suivi
 ```
 
 ## Commandes utiles
 
 ```bash
-sudo journalctl -u helloasso -f   # logs en temps réel
-sudo systemctl stop helloasso     # stoppe le serveur
-sudo systemctl restart helloasso  # redémarrer le serveur
-sudo systemctl status helloasso   # état du service
+sudo journalctl -u tp-formation-suivi -f   # logs en temps réel
+sudo systemctl stop tp-formation-suivi     # stoppe le serveur
+sudo systemctl restart tp-formation-suivi  # redémarrer le serveur
+sudo systemctl status tp-formation-suivi   # état du service
 sudo nginx -t                     # vérifier la config Nginx
 ```
