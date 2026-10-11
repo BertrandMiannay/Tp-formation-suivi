@@ -5,11 +5,15 @@ from functools import wraps
 
 from django.contrib.auth import get_user_model, login, update_session_auth_hash
 from django.contrib import messages
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import Group
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.generic import ListView, UpdateView, FormView, View, TemplateView
 from django.urls import reverse, reverse_lazy
 from django import forms
@@ -73,6 +77,21 @@ def invite_url_for(request, user):
     if not user.invite_token:
         return None
     return request.build_absolute_uri(reverse('userManagement:accept_invite', args=[user.invite_token]))
+
+
+def can_reset_password(actor, target):
+    """Un admin peut réinitialiser tout compte actif ; un encadrant, seulement celui d'un élève."""
+    if not target.is_active or target == actor:
+        return False
+    return actor.is_administrator or (actor.is_club_staff and target.role == Role.STUDENT)
+
+
+def password_reset_url_for(request, user):
+    """Lien de réinitialisation (sans email) : valable PASSWORD_RESET_TIMEOUT, invalidé dès que
+    le mot de passe change ou que l'utilisateur se connecte."""
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return request.build_absolute_uri(reverse('userManagement:password_reset', args=[uidb64, token]))
 
 
 def _check_passwords_match(cleaned_data, field1, field2):
@@ -274,6 +293,52 @@ class AcceptInviteView(View):
             return redirect('/')
         return render(request, self.template_name, {'form': form, 'email': user.email})
 
+
+
+class PasswordResetLinkView(LoginRequiredMixin, View):
+    """Génère un lien de réinitialisation à transmettre à l'utilisateur (aucun email n'est envoyé)."""
+
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        if not can_reset_password(request.user, target):
+            return redirect('home')
+        logger.info("PASSWORD_RESET_LINK user=%s by=%s", target.username, request.user.username)
+        member = getattr(target, 'student_profile', None)
+        back_url = (reverse('suivi-student-detail', args=[member.pk]) + '#infos'
+                    if member and not request.user.is_administrator else reverse('userManagement:user_list'))
+        return render(request, 'userManagement/password_reset_link.html', {
+            'target_user': target,
+            'reset_url': password_reset_url_for(request, target),
+            'back_url': request.POST.get('next') or back_url,
+        })
+
+
+class PasswordResetView(View):
+    """Page publique ouverte par le lien de réinitialisation : choix d'un nouveau mot de passe."""
+    template_name = 'userManagement/password_reset.html'
+
+    def get_target_user(self, uidb64, token):
+        try:
+            user = User.objects.get(pk=urlsafe_base64_decode(uidb64).decode(), is_active=True)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise Http404
+        if not default_token_generator.check_token(user, token):
+            raise Http404
+        return user
+
+    def get(self, request, uidb64, token):
+        user = self.get_target_user(uidb64, token)
+        return render(request, self.template_name, {'form': SetPasswordForm(user), 'target_user': user})
+
+    def post(self, request, uidb64, token):
+        user = self.get_target_user(uidb64, token)
+        form = SetPasswordForm(user, request.POST)
+        if form.is_valid():
+            form.save()
+            logger.info("PASSWORD_RESET_DONE user=%s", user.username)
+            messages.success(request, 'Mot de passe modifié : vous pouvez vous connecter.')
+            return redirect('account_login')
+        return render(request, self.template_name, {'form': form, 'target_user': user})
 
 
 class UserDeleteView(AdminRequiredMixin, View):

@@ -25,5 +25,9 @@ ENV DATABASE_URL=sqlite:////data/db.sqlite3
 VOLUME /data
 EXPOSE 8000
 
+# Le Host envoyé doit faire partie d'ALLOWED_HOSTS.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import os, urllib.request as u; h = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')[0]; u.urlopen(u.Request('http://127.0.0.1:8000/health/', headers={'Host': h}), timeout=4)"
+
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-"]
