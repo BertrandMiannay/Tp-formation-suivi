@@ -60,7 +60,7 @@
         {% if user.student_profile %}
             <a href="{% url 'suivi-mine' %}">Mon suivi</a>
         {% endif %}
-        {% if user.is_administrator or user.is_superuser %}
+        {% if user.is_administrator %}
             <a href="{% url 'saison-gestion' %}">Saisons et formations</a>
             <a href="/users/">Utilisateurs</a>
         {% endif %}

@@ -12,5 +12,6 @@ class UsermanagementConfig(AppConfig):
 
 def _create_default_groups(sender, **kwargs):
     from django.contrib.auth.models import Group
-    for name in ['member', 'instructor', 'dive_director', 'admin']:
-        Group.objects.get_or_create(name=name)
+    from .models import Role
+    for role in Role:
+        Group.objects.get_or_create(name=role.value)

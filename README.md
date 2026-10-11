@@ -3,8 +3,7 @@
 Suivi des élèves en formation plongée : séances hebdomadaires, présences, compétences travaillées
 et validées par élève, exercices, notes (équipe encadrante ou visibles par l'élève).
 
-Issu de [TP-manager](https://github.com/BertrandMiannay/TP-manager), sans l'intégration HelloAsso :
-les élèves sont créés directement dans l'application.
+Issu de [TP-manager](https://github.com/BertrandMiannay/TP-manager) ; les élèves sont créés directement dans l'application.
 
 ## Démarrage
 
@@ -20,7 +19,7 @@ Puis : **Saisons et formations** → créer une saison (la marquer active) et un
 
 ## Fonctionnement
 
-- **Élève** : fiche (`formation.Member`) rattachée à un compte utilisateur du rôle `member`.
+- **Élève** : fiche (`formation.Member`) rattachée à un compte utilisateur du rôle `student`.
   Il est inscrit à une ou plusieurs saisons et prépare un ou plusieurs niveaux (cursus).
 - **Séance** : date, niveaux préparés, encadrants. Les élèves attendus sont ceux de la saison qui préparent l'un de ces niveaux.
 - **Appel** : présent / absent / absent excusé, avec commentaire.
@@ -64,17 +63,26 @@ Champs :
 
 ## Rôles utilisateurs
 
+Trois niveaux de compte (groupes Django, définis dans `userManagement.models.Role`) :
+
 | Rôle | Label | Accès |
 |------|-------|-------|
+| `student` | Élève | « Mon suivi » (lecture seule) |
+| `instructor` | Encadrant | Séances, présences, élèves, évaluations |
 | `admin` | Administrateur | Tout, dont saisons/formations et utilisateurs |
-| `instructor` | Formateur | Séances, élèves, évaluations |
-| `dive_director` | Directeur de plongée | Séances, élèves, évaluations |
-| `member` | Membre / élève | « Mon suivi » (lecture seule) |
+
+Les comptes élèves sont créés depuis **Élèves → + Nouvel élève** ; les encadrants et administrateurs
+via **Utilisateurs → + Inviter** (le rôle est choisi à l'invitation et modifiable ensuite).
+
+## Migrations
+
+Une seule migration initiale par application (`0001_initial`), régénérée avant la première mise en
+production. Toute évolution du modèle ajoute désormais une nouvelle migration.
 
 ## Commandes utiles
 
 ```
-python manage.py makemigrations formation suivi
+python manage.py makemigrations userManagement formation suivi
 python manage.py migrate
 python manage.py test
 python manage.py createsuperuser

@@ -196,24 +196,6 @@ files = [
 django = ">=3.2"
 
 [[package]]
-name = "django-tables2"
-version = "2.7.5"
-description = "Table/data-grid framework for Django"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "django_tables2-2.7.5-py3-none-any.whl", hash = "sha256:d9338937797207ffb6f481be2125c5ec3a0bb1858d409c672cc25fc5d654cb22"},
-    {file = "django_tables2-2.7.5.tar.gz", hash = "sha256:fb5dcaa09379cf3947598ec7e1bd5f26ed63aafdee3b23963446763bbeac37bf"},
-]
-
-[package.dependencies]
-django = ">=4.2"
-
-[package.extras]
-tablib = ["tablib"]
-
-[[package]]
 name = "dotenv"
 version = "0.9.9"
 description = "Deprecated package"
@@ -544,4 +526,4 @@ brotli = ["brotli"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.13"
-content-hash = "1162b578d1477635c325e8ebbe236fdd8c544da24496e6923fa9babb5586ddc7"
+content-hash = "0c735d080de798c9fd2cdeb48448d78541955f9c6cecd4344070e5a5e9420fe0"
