@@ -53,6 +53,12 @@
                     {% if not invite_url %}
                         <a href="{% url 'userManagement:user_role' u.pk %}" class="btn btn-secondary">Rôle</a>
                     {% endif %}
+                    {% if u.is_active %}
+                    <form method="post" action="{% url 'userManagement:password_reset_link' u.pk %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-secondary">Réinitialiser le mot de passe</button>
+                    </form>
+                    {% endif %}
                     <form method="post" action="{% url 'userManagement:user_delete' u.pk %}" style="display:inline;"
                           onsubmit="return confirm('Supprimer {{ u.email }} ? Cette action est irréversible.');">
                         {% csrf_token %}

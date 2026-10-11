@@ -118,6 +118,15 @@ else:
         }
     }
 
+# SQLite et plusieurs workers gunicorn : journal WAL (lectures pendant une écriture) et
+# transactions IMMEDIATE (pas d'erreur « database is locked » quand deux écritures se croisent).
+if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+    DATABASES['default'].setdefault('OPTIONS', {}).update({
+        'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+        'transaction_mode': 'IMMEDIATE',
+        'timeout': 20,
+    })
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -141,9 +150,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'fr-fr'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Paris'
 
 USE_I18N = True
 
@@ -169,6 +178,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', str(not DEBUG)) == 'True'
 CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', str(not DEBUG)) == 'True'
 SESSION_COOKIE_SAMESITE = 'Lax'
+
+# HSTS : à activer (ex. 31536000) une fois le site servi en HTTPS. La redirection HTTP → HTTPS est faite par nginx.
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SILENCED_SYSTEM_CHECKS = ['security.W008']
+
+# Durée de validité des liens de réinitialisation de mot de passe générés par un encadrant / admin.
+PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600
 
 # Authentication
 AUTHENTICATION_BACKENDS = [

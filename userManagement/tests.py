@@ -57,6 +57,44 @@ class RoleTests(TestCase):
 
 
 
+class PasswordResetLinkTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
+        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        cls.instructor = User.objects.create_user('moniteur', 'moniteur@example.com', 'pwd')
+        cls.instructor.groups.add(Group.objects.get(name=Role.INSTRUCTOR))
+        cls.student = User.objects.create_user('eleve', 'eleve@example.com', 'old-password')
+        cls.student.groups.add(Group.objects.get(name=Role.STUDENT))
+
+    def generate_link(self, actor, target):
+        self.client.force_login(actor)
+        response = self.client.post(reverse('userManagement:password_reset_link', args=[target.pk]))
+        self.client.logout()
+        return response.context['reset_url'] if response.status_code == 200 else None
+
+    def test_instructor_can_reset_student_only(self):
+        self.assertIsNotNone(self.generate_link(self.instructor, self.student))
+        self.assertIsNone(self.generate_link(self.instructor, self.admin))
+        self.assertIsNone(self.generate_link(self.student, self.instructor))
+
+    def test_reset_sets_password_and_link_is_single_use(self):
+        url = self.generate_link(self.admin, self.student)
+        new = {'new_password1': 'Plongee-2026!', 'new_password2': 'Plongee-2026!'}
+        self.assertRedirects(self.client.post(url, new), reverse('account_login'), fetch_redirect_response=False)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password('Plongee-2026!'))
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_invalid_token_is_404(self):
+        url = reverse('userManagement:password_reset', args=['MQ', 'bad-token'])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_health(self):
+        self.assertEqual(self.client.get(reverse('health')).content, b'ok')
+
+
 create_initial_admin = importlib.import_module(
     'userManagement.migrations.0002_create_initial_admin').create_initial_admin
 

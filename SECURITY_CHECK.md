@@ -28,6 +28,8 @@
 | S09 | Journalisation des actions sensibles | ✅ |
 | S10 | URL d'invitation non stockée en base | ✅ |
 | S12 | Limitation des tentatives de connexion | ✅ (défaut allauth) |
+| S13 | Réinitialisation de mot de passe sans email | ✅ |
+| S14 | HSTS | 🟡 à activer après bascule (`SECURE_HSTS_SECONDS`) |
 
 ---
 
@@ -67,9 +69,15 @@ Seul le jeton (UUID) est stocké ; l'URL est reconstruite à l'affichage.
 ### ✅ S12 — Limitation des tentatives de connexion
 Limites par défaut d'allauth (`login_failed` : 10/min par IP, 5 échecs par compte). Elles reposent sur le cache Django (mémoire locale par processus gunicorn) : suffisant pour un club, à renforcer (cache partagé, django-axes) si besoin.
 
+### ✅ S13 — Réinitialisation de mot de passe sans email
+Lien généré par un administrateur (tout compte actif) ou un encadrant (comptes élèves uniquement, jamais le sien), via `default_token_generator` :
+valable 7 jours (`PASSWORD_RESET_TIMEOUT`), invalidé dès que le mot de passe change ou que l'utilisateur se connecte. Logs `PASSWORD_RESET_LINK` / `PASSWORD_RESET_DONE`.
+
+### 🟡 S14 — HSTS
+Réglable par `SECURE_HSTS_SECONDS` (0 par défaut). À passer à 31536000 une fois le HTTPS vérifié en production. La redirection HTTP → HTTPS est faite par nginx (`security.W008` ignoré).
+
 ---
 
 ## Périmètre non couvert
 
 - **Chiffrement des données personnelles en base** (date de naissance, certificat médical, contact d'urgence) — à considérer si la base est sauvegardée hors du serveur.
-- **Health check endpoint** — utile si un monitoring externe est mis en place.

@@ -49,7 +49,14 @@
     <table class="info-table" style="max-width:600px;">
         <tbody>
             <tr><th style="width:45%;">Email</th><td>{{ member.email|default:"—" }}</td></tr>
-            <tr><th>Compte</th><td>{% if member.user.is_active %}{{ member.user.username }}{% elif member.user %}invitation envoyée{% else %}—{% endif %}</td></tr>
+            <tr><th>Compte</th><td>{% if member.user.is_active %}{{ member.user.username }}
+                {% if can_reset_password %}
+                <form method="post" action="{% url 'userManagement:password_reset_link' member.user.pk %}" class="inline-form" style="margin-left:0.5rem;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary" style="font-size:0.8rem; padding:0.2rem 0.5rem;">Réinitialiser le mot de passe</button>
+                </form>
+                {% endif %}
+                {% elif member.user %}invitation envoyée{% else %}—{% endif %}</td></tr>
             <tr><th>Date de naissance</th><td>{{ member.birthdate|date:"d/m/Y"|default:"—" }}</td></tr>
             <tr><th>Certificat médical</th><td>{{ member.medical_certificate_date|date:"d/m/Y"|default:"—" }}</td></tr>
             <tr><th>Contact d'urgence</th><td>{{ member.emergency_contact_name|default:"—" }}{% if member.emergency_contact_phone %} — {{ member.emergency_contact_phone }}{% endif %}</td></tr>
