@@ -15,21 +15,18 @@
     </div>
     <div class="form-group">
         <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}
-        {% if not member %}<p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">Un compte élève est créé avec cette adresse ; un lien d'invitation vous sera donné pour qu'il choisisse son mot de passe.</p>{% endif %}
+        <p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">{{ form.email.help_text }}</p>
     </div>
     <div class="grid-2">
         <div class="form-group"><label for="{{ form.birthdate.id_for_label }}">{{ form.birthdate.label }}</label>{{ form.birthdate }}{{ form.birthdate.errors }}</div>
         <div class="form-group"><label for="{{ form.medical_certificate_date.id_for_label }}">{{ form.medical_certificate_date.label }}</label>{{ form.medical_certificate_date }}{{ form.medical_certificate_date.errors }}</div>
         <div class="form-group"><label for="{{ form.emergency_contact_name.id_for_label }}">{{ form.emergency_contact_name.label }}</label>{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
         <div class="form-group"><label for="{{ form.emergency_contact_phone.id_for_label }}">{{ form.emergency_contact_phone.label }}</label>{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
-        <div class="form-group checkbox-list">
-            <label>{{ form.formations.label }}</label>{{ form.formations }}{{ form.formations.errors }}
-            {% if not form.formations.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucun cursus actif (Saisons et formations → Formations).</p>{% endif %}
+        {% if form.formation %}
+        <div class="form-group">
+            <label for="{{ form.formation.id_for_label }}">{{ form.formation.label }}</label>{{ form.formation }}{{ form.formation.errors }}
         </div>
-        <div class="form-group checkbox-list">
-            <label>{{ form.seasons.label }}</label>{{ form.seasons }}{{ form.seasons.errors }}
-            {% if not form.seasons.field.queryset %}<p class="muted" style="font-size:0.85rem;">Aucune saison (Saisons et formations → Saisons).</p>{% endif %}
-        </div>
+        {% endif %}
     </div>
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">{% if member %}Enregistrer{% else %}Créer l'élève{% endif %}</button>

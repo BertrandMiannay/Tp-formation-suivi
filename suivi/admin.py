@@ -13,7 +13,7 @@ class AttendanceInline(admin.TabularInline):
 class TrainingSessionAdmin(admin.ModelAdmin):
     list_display      = ('date', 'title', 'season')
     list_filter       = ('season',)
-    filter_horizontal = ('cursus', 'instructors')
+    filter_horizontal = ('formations', 'instructors')
     inlines           = [AttendanceInline]
 
 

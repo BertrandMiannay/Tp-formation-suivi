@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -25,6 +26,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+
+# Vrai pendant `manage.py test` (la migration du premier administrateur est alors ignorée).
+TESTING = sys.argv[1:2] == ['test']
 
 _secret_key = os.environ.get('SECRET_KEY')
 if not _secret_key:

@@ -33,7 +33,7 @@
 </style>
 
 <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap;">
-  <a href="{% url 'saison-formation' %}" style="color:#666; text-decoration:none;">← Retour</a>
+  <a href="{% url 'saison-cursus' %}" style="color:#666; text-decoration:none;">← Retour</a>
   <h1 style="margin:0;">{{ cursus.name }}</h1>
   <span class="badge-{{ cursus.status }}">{{ cursus.get_status_display }}</span>
 </div>

@@ -11,7 +11,7 @@
         <h1 style="margin-bottom:0.25rem;">{{ member.first_name }} {{ member.last_name }}</h1>
         <p class="muted" style="margin-bottom:1.5rem;">
             {{ member.email }}
-            {% for f in formations %} <span class="badge badge-cursus">{{ f.name }}</span>{% endfor %}
+            {% for e in enrollments %}{% if e.status == 'active' %} <span class="badge badge-cursus">{{ e.formation.name }}</span>{% endif %}{% endfor %}
         </p>
     </div>
     <div class="actions" style="margin-bottom:1rem;">
@@ -44,7 +44,7 @@
         </div>
     </div>
     {% elif not member.user %}
-    <div class="card" style="border-left:4px solid #f59e0b;"><p>Aucun compte rattaché : renseignez un email via « Modifier » pour créer le compte élève.</p></div>
+    <div class="card" style="border-left:4px solid #9ca3af;"><p class="muted">Pas encore de compte élève : renseignez son email via « Modifier » pour lui donner accès à son suivi (consultation uniquement).</p></div>
     {% endif %}
     <table class="info-table" style="max-width:600px;">
         <tbody>
@@ -53,9 +53,31 @@
             <tr><th>Date de naissance</th><td>{{ member.birthdate|date:"d/m/Y"|default:"—" }}</td></tr>
             <tr><th>Certificat médical</th><td>{{ member.medical_certificate_date|date:"d/m/Y"|default:"—" }}</td></tr>
             <tr><th>Contact d'urgence</th><td>{{ member.emergency_contact_name|default:"—" }}{% if member.emergency_contact_phone %} — {{ member.emergency_contact_phone }}{% endif %}</td></tr>
-            <tr><th>Saisons</th><td>{% for s in member.seasons.all %}<span class="badge badge-cursus">{{ s.label }}</span> {% empty %}—{% endfor %}</td></tr>
         </tbody>
     </table>
+
+    <div class="card" style="margin-top:1.5rem;">
+        <h2>Formations</h2>
+        {% for e in enrollments %}
+        <div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; padding:0.4rem 0; border-top:1px solid #eee;">
+            <span><a href="{% url 'formation-detail' e.formation.pk %}" style="color:#1a1a2e; font-weight:500;">{{ e.formation.name }}</a>
+                <span class="muted" style="font-size:0.85rem;">{{ e.formation.cursus.name }} · inscrit le {{ e.date|date:"d/m/Y" }}</span></span>
+            <span class="badge badge-enroll-{{ e.status }}">{{ e.get_status_display }}</span>
+        </div>
+        {% empty %}
+        <p class="muted">Inscrit à aucune formation.</p>
+        {% endfor %}
+        {% if enrollable_formations %}
+        <form method="post" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
+            {% csrf_token %}
+            <input type="hidden" name="_action" value="enroll">
+            <select name="formation_id" style="width:auto; flex:1; min-width:200px;" aria-label="Formation">
+                {% for f in enrollable_formations %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-secondary">Inscrire</button>
+        </form>
+        {% endif %}
+    </div>
 </section>
 
 <section id="tab-presences" class="student-tab">

@@ -2,15 +2,17 @@ import json
 import logging
 from urllib.parse import quote
 
-from django import forms
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from formation.models import Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation
+from formation.forms import FormationForm, QuickStudentForm, StudentForm
+from formation.models import (
+    Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
+)
 from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
 from userManagement.models import Role
 
@@ -21,41 +23,15 @@ logger = logging.getLogger(__name__)
 # Élèves
 # ---------------------------------------------------------------------------
 
-class StudentForm(forms.ModelForm):
-    email = forms.EmailField(label='Email (identifiant du compte élève)')
-
-    class Meta:
-        model  = Member
-        fields = ['first_name', 'last_name', 'birthdate', 'medical_certificate_date',
-                  'emergency_contact_name', 'emergency_contact_phone', 'formations', 'seasons']
-        widgets = {
-            'birthdate': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'medical_certificate_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'formations': forms.CheckboxSelectMultiple,
-            'seasons': forms.CheckboxSelectMultiple,
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        cursus_qs = Cursus.objects.filter(status=Cursus.Status.ACTIVE)
-        if self.instance.pk:
-            cursus_qs = cursus_qs | self.instance.formations.all()
-            self.fields['email'].initial = self.instance.email
-        self.fields['formations'].queryset = cursus_qs.distinct().order_by('name')
-        self.fields['seasons'].queryset = Season.objects.order_by('-current', '-label')
-
-    def clean_email(self):
-        email = self.cleaned_data['email'].strip().lower()
-        User = get_user_model()
-        others = User.objects.filter(email__iexact=email)
-        if self.instance.user_id:
-            others = others.exclude(pk=self.instance.user_id)
-        owner = others.filter(student_profile__isnull=False).first()
-        if owner:
-            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre élève.")
-        if self.instance.user_id and others.exists():
-            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
-        return email
+def attach_account(member, email):
+    """Rattache un compte à l'élève : compte existant sans fiche (ex. encadrant qui suit une formation)
+    ou nouveau compte inactif avec lien d'invitation."""
+    user = get_user_model().objects.filter(email__iexact=email, student_profile__isnull=True).first()
+    if user is None:
+        user = create_invited_user(email, group_name=Role.STUDENT)
+    member.user = user
+    member.save(update_fields=['user'])
+    return user
 
 
 @club_staff_required
@@ -64,22 +40,20 @@ def student_create(request):
         form = StudentForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data['email']
+            formation = form.cleaned_data['formation']
             with transaction.atomic():
                 member = form.save()
-                # Compte existant sans fiche (ex. encadrant qui suit une formation) : on le rattache.
-                user = get_user_model().objects.filter(email__iexact=email).first()
-                if user is None:
-                    user = create_invited_user(email, group_name=Role.STUDENT)
-                member.user = user
-                member.save(update_fields=['user'])
-            logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk, request.user.username)
+                user = attach_account(member, email) if email else None
+                if formation:
+                    Enrollment.objects.create(member=member, formation=formation)
+            logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk if user else None, request.user.username)
             messages.success(request, f"Élève {member} créé." + (
-                " Transmettez-lui le lien d'invitation pour qu'il choisisse son mot de passe." if not user.is_active else ""
+                " Transmettez-lui le lien d'invitation pour qu'il choisisse son mot de passe."
+                if user and not user.is_active else ""
             ))
             return redirect('suivi-student-detail', pk=member.pk)
     else:
-        current = Season.objects.filter(current=True).first()
-        form = StudentForm(initial={'seasons': [current.pk] if current else []})
+        form = StudentForm(initial={'formation': request.GET.get('formation')})
     return render(request, 'formation/student_form.html', {'form': form, 'member': None})
 
 
@@ -98,8 +72,8 @@ def student_edit(request, pk):
             with transaction.atomic():
                 form.save()
                 if member.user_id is None:
-                    member.user = create_invited_user(email, group_name=Role.STUDENT)
-                    member.save(update_fields=['user'])
+                    if email:
+                        attach_account(member, email)
                 elif member.user.email != email:
                     member.user.email = email
                     member.user.save(update_fields=['email'])
@@ -114,7 +88,7 @@ def student_edit(request, pk):
 @club_staff_required
 def evaluation(request, pk):
     member = get_object_or_404(Member, pk=pk)
-    formations_qs = member.formations.prefetch_related('categories__skills').all()
+    formations_qs = Cursus.objects.filter(pk__in=member.cursus_ids()).prefetch_related('categories__skills').order_by('name')
     skill_ids = [s.pk for f in formations_qs for c in f.categories.all() for s in c.skills.all()]
     member_skills_map = {
         ms.skill_id: ms.status
@@ -154,7 +128,114 @@ def evaluation(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# Saisons et formations (administration)
+# Formations et inscriptions
+# ---------------------------------------------------------------------------
+
+@club_staff_required
+def formation_list(request):
+    formations = Formation.objects.select_related('cursus').prefetch_related('managers').annotate(
+        student_count=Count('enrollments', filter=Q(enrollments__status=Enrollment.Status.ACTIVE)),
+    )
+    return render(request, 'formation/formation_list.html', {
+        'active_formations': [f for f in formations if f.status == Formation.Status.ACTIVE],
+        'closed_formations': [f for f in formations if f.status == Formation.Status.CLOSED],
+        'active_tab': 'formations',
+    })
+
+
+@admin_required
+def formation_create(request):
+    form = FormationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        formation = form.save()
+        logger.info("FORMATION_CREATE pk=%s name=%s by=%s", formation.pk, formation.name, request.user.username)
+        messages.success(request, f"Formation « {formation} » créée.")
+        return redirect('formation-detail', pk=formation.pk)
+    return render(request, 'formation/formation_form.html', {'form': form, 'active_tab': 'formations'})
+
+
+@club_staff_required
+def formation_detail(request, pk):
+    formation = get_object_or_404(Formation.objects.select_related('cursus').prefetch_related('managers'), pk=pk)
+    edit_form = FormationForm(instance=formation) if request.user.is_administrator else None
+    quick_form = QuickStudentForm()
+    anchor = reverse('formation-detail', args=[pk]) + '#eleves'
+
+    if request.method == 'POST':
+        action = request.POST.get('_action')
+
+        if action == 'enroll':
+            member = get_object_or_404(Member, pk=request.POST.get('member_id'))
+            _, created = Enrollment.objects.get_or_create(member=member, formation=formation)
+            if created:
+                messages.success(request, f"{member} inscrit à la formation.")
+            return redirect(anchor)
+
+        elif action == 'create_student':
+            quick_form = QuickStudentForm(request.POST)
+            if quick_form.is_valid():
+                member = quick_form.save(formation=formation)
+                logger.info("STUDENT_CREATE pk=%s formation=%s by=%s", member.pk, formation.pk, request.user.username)
+                messages.success(request, f"Élève {member} créé et inscrit.")
+                return redirect(anchor)
+
+        elif action == 'set_status':
+            enrollment = get_object_or_404(Enrollment, pk=request.POST.get('enrollment_pk'), formation=formation)
+            status = request.POST.get('status')
+            if status in Enrollment.Status.values:
+                enrollment.status = status
+                enrollment.save(update_fields=['status'])
+            return redirect(anchor)
+
+        elif action == 'unenroll':
+            Enrollment.objects.filter(pk=request.POST.get('enrollment_pk'), formation=formation).delete()
+            return redirect(anchor)
+
+        elif action == 'edit' and request.user.is_administrator:
+            edit_form = FormationForm(request.POST, instance=formation)
+            if edit_form.is_valid():
+                edit_form.save()
+                messages.success(request, "Formation mise à jour.")
+                return redirect('formation-detail', pk=pk)
+
+        elif action == 'toggle_status' and request.user.is_administrator:
+            formation.status = (
+                Formation.Status.CLOSED if formation.status == Formation.Status.ACTIVE else Formation.Status.ACTIVE
+            )
+            formation.save(update_fields=['status'])
+            logger.info("FORMATION_STATUS pk=%s status=%s by=%s", formation.pk, formation.status, request.user.username)
+            return redirect('formation-detail', pk=pk)
+
+    enrollments = formation.enrollments.select_related('member__user').order_by('member__last_name', 'member__first_name')
+    skill_total = Skill.objects.filter(category__cursus=formation.cursus_id).count()
+    acquired = {
+        row['member_id']: row['n']
+        for row in MemberSkill.objects.filter(
+            member__in=[e.member_id for e in enrollments], skill__category__cursus=formation.cursus_id,
+            status=MemberSkill.SkillStatus.ACQUIRED,
+        ).values('member_id').annotate(n=Count('pk'))
+    }
+    rows = [{
+        'enrollment': e,
+        'acquired': acquired.get(e.member_id, 0),
+        'pct': round(100 * acquired.get(e.member_id, 0) / skill_total) if skill_total else 0,
+    } for e in enrollments]
+    addable_members = Member.objects.exclude(enrollments__formation=formation).order_by('last_name', 'first_name')
+    return render(request, 'formation/formation_detail.html', {
+        'formation': formation,
+        'rows': rows,
+        'skill_total': skill_total,
+        'status_choices': Enrollment.Status.choices,
+        'addable_members': addable_members,
+        'quick_form': quick_form,
+        'edit_form': edit_form,
+        'sessions': formation.training_sessions.order_by('-date')[:10],
+        'active_tab': 'formations',
+    })
+
+
+# ---------------------------------------------------------------------------
+# Saisons et cursus (administration)
 # ---------------------------------------------------------------------------
 
 @admin_required
@@ -193,13 +274,13 @@ def delete_season(request, pk):
 
 
 @admin_required
-def formation_list(request):
+def cursus_list(request):
     cursus_list = Cursus.objects.annotate(
         category_count=Count('categories'),
     ).order_by('status', '-date')
-    return render(request, 'formation/formation.html', {
+    return render(request, 'formation/cursus_list.html', {
         'cursus_list': cursus_list,
-        'active_tab': 'formation',
+        'active_tab': 'cursus',
     })
 
 
@@ -229,7 +310,7 @@ def cursus_create(request):
     return render(request, 'formation/cursus_create.html', {
         'error': error,
         'form_data': form_data,
-        'active_tab': 'formation',
+        'active_tab': 'cursus',
     })
 
 
@@ -311,7 +392,7 @@ def cursus_detail(request, pk):
         'cursus': cursus,
         'categories': categories,
         'cursus_json': cursus_json,
-        'active_tab': 'formation',
+        'active_tab': 'cursus',
     })
 
 
@@ -328,7 +409,7 @@ def cursus_archive(request, pk):
         cursus.save(update_fields=['status'])
         logger.info("CURSUS_STATUS pk=%s status=%s by=%s", cursus.pk, cursus.status, request.user.username)
         messages.success(request, f"Cursus « {cursus.name} » {action_label}.")
-    return redirect('saison-formation')
+    return redirect('saison-cursus')
 
 
 @admin_required

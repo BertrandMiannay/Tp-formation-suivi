@@ -29,7 +29,7 @@ docker compose up -d
 docker compose logs -f      # « Listening at: http://0.0.0.0:8000 »
 ```
 
-Au démarrage, le conteneur applique les migrations puis crée l'administrateur défini dans `.env`
+Au démarrage, le conteneur applique les migrations ; sur une base neuve, une migration crée l'administrateur défini dans `.env`
 s'il n'existe pas encore (retirer ensuite `DJANGO_SUPERUSER_PASSWORD` du fichier).
 
 L'application écoute sur `127.0.0.1:8000` (modifiable via `APP_PORT`), uniquement en local.

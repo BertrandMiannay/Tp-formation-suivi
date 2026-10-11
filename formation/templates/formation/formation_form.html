@@ -1,0 +1,14 @@
+{% extends "suivi/base.html" %}
+
+{% block title %}Nouvelle formation{% endblock %}
+
+{% block suivi_content %}
+<a href="{% url 'formation-list' %}" class="btn btn-secondary" style="margin-bottom:1.5rem;">← Formations</a>
+<h1>Nouvelle formation</h1>
+
+<form method="post" class="card" style="max-width:800px;">
+    {% csrf_token %}
+    {% include "formation/_formation_fields.html" %}
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Créer la formation</button></div>
+</form>
+{% endblock %}

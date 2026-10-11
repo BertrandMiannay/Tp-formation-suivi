@@ -4,12 +4,13 @@
 
 {% block suivi_content %}
 <div class="page-header">
-    <h1>Élèves{% if season %} — {{ season.label }}{% endif %}</h1>
+    <h1>Élèves</h1>
     <div class="actions">
     <form method="get">
-        <select name="cursus" onchange="this.form.submit()" aria-label="Niveau">
-            <option value="">Tous les niveaux</option>
-            {% for c in cursus_list %}<option value="{{ c.pk }}" {% if c.pk == cursus_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        <select name="formation" onchange="this.form.submit()" aria-label="Formation">
+            <option value="">En formation</option>
+            {% for f in formation_list %}<option value="{{ f.pk }}" {% if f.pk == formation_id %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
+            <option value="all" {% if show_all %}selected{% endif %}>Tous les élèves</option>
         </select>
     </form>
     <a href="{% url 'eleve-create' %}" class="btn btn-primary">+ Nouvel élève</a>
@@ -21,13 +22,13 @@
 {% if rows %}
 <table id="student-table">
     <thead>
-        <tr><th>Élève</th><th>Formations</th><th>Présences</th><th>Compétences acquises</th></tr>
+        <tr><th>Élève</th><th>Formations</th><th>Présences{% if season %} ({{ season.label }}){% endif %}</th><th>Compétences acquises</th></tr>
     </thead>
     <tbody>
         {% for row in rows %}
         <tr style="cursor:pointer;" onclick="window.location='{% url 'suivi-student-detail' row.member.pk %}'">
             <td data-label="Élève"><a href="{% url 'suivi-student-detail' row.member.pk %}" style="color:#1a1a2e; font-weight:500;">{{ row.member.last_name }} {{ row.member.first_name }}</a></td>
-            <td data-label="Formations">{% for c in row.member.formations.all %}<span class="badge badge-cursus">{{ c.name }}</span> {% endfor %}</td>
+            <td data-label="Formations">{% for e in row.member.active_enrollments %}<span class="badge badge-cursus">{{ e.formation.name }}</span> {% empty %}<span class="muted">—</span>{% endfor %}</td>
             <td data-label="Présences">{{ row.member.present_count }}/{{ row.member.attendance_count }}{% if row.rate is not None %} <span class="muted">({{ row.rate }} %)</span>{% endif %}</td>
             <td data-label="Compétences acquises">{{ row.member.acquired_count }}</td>
         </tr>
@@ -43,6 +44,6 @@ document.getElementById('search').addEventListener('input', function () {
 });
 </script>
 {% else %}
-<p class="muted">Aucun élève pour la saison en cours : créez-en un avec « + Nouvel élève » (en lui associant au moins une formation et la saison).</p>
+<p class="muted">Aucun élève{% if not show_all %} en formation{% endif %} : créez-en un avec « + Nouvel élève » ou depuis une formation.</p>
 {% endif %}
 {% endblock %}

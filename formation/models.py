@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Season(models.Model):
@@ -60,8 +61,40 @@ class Skill(models.Model):
         return self.name
 
 
+class FormationQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(status=Formation.Status.ACTIVE)
+
+
+class Formation(models.Model):
+    """Formation suivie par un groupe d'élèves (ex. « N2 promo 2026 ») : instance d'un cursus,
+    indépendante des saisons."""
+
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'En cours'
+        CLOSED = 'closed', 'Terminée'
+
+    name       = models.CharField('Nom', max_length=200)
+    cursus     = models.ForeignKey(Cursus, on_delete=models.PROTECT, related_name='formations', verbose_name='Cursus')
+    start_date = models.DateField('Début', null=True, blank=True)
+    end_date   = models.DateField('Fin', null=True, blank=True)
+    managers   = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='managed_formations',
+                                        verbose_name='Responsables')
+    status     = models.CharField('Statut', max_length=20, choices=Status.choices, default=Status.ACTIVE)
+
+    objects = FormationQuerySet.as_manager()
+
+    class Meta:
+        verbose_name        = 'Formation'
+        verbose_name_plural = 'Formations'
+        ordering            = ['status', '-start_date', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class Member(models.Model):
-    """Élève. Son compte utilisateur (rôle « membre ») lui donne accès à « Mon suivi »."""
+    """Élève. Le compte utilisateur (facultatif, rôle « élève ») donne accès à « Mon suivi » en lecture seule."""
 
     user        = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                        related_name='student_profile', verbose_name='Compte')
@@ -71,8 +104,6 @@ class Member(models.Model):
     medical_certificate_date = models.DateField('Certificat médical', null=True, blank=True)
     emergency_contact_name   = models.CharField("Contact d'urgence", max_length=200, blank=True)
     emergency_contact_phone  = models.CharField("Téléphone d'urgence", max_length=50, blank=True)
-    formations  = models.ManyToManyField(Cursus, blank=True, related_name='members', verbose_name='Niveaux préparés')
-    seasons     = models.ManyToManyField(Season, blank=True, related_name='members', verbose_name='Saisons')
 
     class Meta:
         verbose_name        = 'Élève'
@@ -85,6 +116,38 @@ class Member(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+    def cursus_ids(self):
+        """Cursus des formations auxquelles l'élève est inscrit (hors abandons)."""
+        return set(
+            self.enrollments.exclude(status=Enrollment.Status.DROPPED)
+            .values_list('formation__cursus_id', flat=True)
+        )
+
+
+class Enrollment(models.Model):
+    """Inscription d'un élève à une formation."""
+
+    class Status(models.TextChoices):
+        ACTIVE    = 'active',    'En formation'
+        COMPLETED = 'completed', 'Terminée'
+        DROPPED   = 'dropped',   'Abandon'
+
+    member    = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='enrollments', verbose_name='Élève')
+    formation = models.ForeignKey(Formation, on_delete=models.CASCADE, related_name='enrollments', verbose_name='Formation')
+    status    = models.CharField('Statut', max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    date      = models.DateField("Date d'inscription", default=timezone.localdate)
+
+    class Meta:
+        verbose_name        = 'Inscription'
+        verbose_name_plural = 'Inscriptions'
+        ordering            = ['status', '-date', '-pk']
+        constraints = [
+            models.UniqueConstraint(fields=['member', 'formation'], name='unique_enrollment'),
+        ]
+
+    def __str__(self):
+        return f"{self.member} — {self.formation}"
 
 
 class MemberSkill(models.Model):

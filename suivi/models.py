@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from formation.models import Cursus, Member, MemberSkill, Season, Skill
+from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill
 
 
 class TrainingSession(models.Model):
@@ -11,8 +11,8 @@ class TrainingSession(models.Model):
     date        = models.DateField()
     title       = models.CharField(max_length=200, blank=True, help_text="Thème de la séance (facultatif)")
     location    = models.CharField(max_length=200, blank=True)
-    cursus      = models.ManyToManyField(Cursus, blank=True, related_name='training_sessions',
-                                         help_text="Niveaux préparés pendant la séance")
+    formations  = models.ManyToManyField(Formation, blank=True, related_name='training_sessions',
+                                         help_text="Formations travaillées pendant la séance")
     instructors = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='training_sessions')
     notes       = models.TextField(blank=True, help_text="Déroulé / remarques (visibles par l'équipe encadrante uniquement)")
     created_at  = models.DateTimeField(auto_now_add=True)
@@ -27,15 +27,11 @@ class TrainingSession(models.Model):
         return f"{label} — {self.title}" if self.title else label
 
     def roster(self):
-        """Élèves attendus : adhérents de la saison inscrits à l'un des cursus de la séance,
+        """Élèves attendus : inscrits (en formation) à l'une des formations de la séance,
         plus toute personne ayant déjà une présence enregistrée."""
-        cursus_ids = list(self.cursus.values_list('pk', flat=True))
-        members = Member.objects.filter(formations__isnull=False)
-        if cursus_ids:
-            members = members.filter(formations__in=cursus_ids)
-        if self.season_id:
-            members = members.filter(seasons=self.season_id)
-        expected = members.values_list('pk', flat=True)
+        expected = Enrollment.objects.filter(
+            formation__in=self.formations.all(), status=Enrollment.Status.ACTIVE,
+        ).values_list('member_id', flat=True)
         recorded = self.attendances.values_list('member_id', flat=True)
         return (
             Member.objects

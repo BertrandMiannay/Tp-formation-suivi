@@ -13,20 +13,27 @@ DEBUG=True poetry run python manage.py init_dev_db   # base neuve + superutilisa
 DEBUG=True poetry run python manage.py runserver
 ```
 
-Puis : **Saisons et formations** → créer une saison (la marquer active) et un cursus,
-**Élèves** → **+ Nouvel élève** (un lien d'invitation est généré pour qu'il choisisse son mot de passe),
-**Séances** → **+ Nouvelle séance**.
+Puis :
+1. **Saisons et cursus** → créer une saison (la marquer active) et un cursus (référentiel de compétences).
+2. **Formations** → **+ Nouvelle formation** (ex. « N2 promo 2026 ») à partir d'un cursus.
+3. Inscrire les élèves depuis la formation (création rapide sans compte) ou **Élèves** → **+ Nouvel élève**.
+4. **Séances** → **+ Nouvelle séance**, en choisissant les formations travaillées ; un élève peut aussi être créé directement pendant l'appel.
 
 ## Fonctionnement
 
-- **Élève** : fiche (`formation.Member`) rattachée à un compte utilisateur du rôle `student`.
-  Il est inscrit à une ou plusieurs saisons et prépare un ou plusieurs niveaux (cursus).
-- **Séance** : date, niveaux préparés, encadrants. Les élèves attendus sont ceux de la saison qui préparent l'un de ces niveaux.
+- **Cursus** : référentiel (catégories, compétences), réutilisé d'une formation à l'autre.
+- **Formation** : instance d'un cursus (nom, dates, responsables), indépendante des saisons ; en cours ou terminée.
+- **Inscription** : élève × formation, statut en formation / terminée / abandon.
+- **Élève** : fiche (`formation.Member`). Le compte utilisateur (rôle `student`) est facultatif :
+  il est créé quand on renseigne l'email, avec un lien d'invitation. Un élève sans compte peut être inscrit,
+  noté présent et évalué normalement.
+- **Saison** : regroupe les séances (la saison active est celle des nouvelles séances et des statistiques de présence).
+- **Séance** : date, formations travaillées, encadrants. Les élèves attendus sont ceux inscrits (en formation) à l'une de ces formations.
 - **Appel** : présent / absent / absent excusé, avec commentaire.
 - **Compétences** : saisies par élève et par séance (travaillée, évaluation du jour, commentaire).
   Une évaluation met à jour le statut de l'élève et est historisée avec son auteur.
 - **Exercices et notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
-- **Mon suivi** : l'élève connecté voit ses présences, compétences, exercices et les notes qui lui sont destinées.
+- **Mon suivi** (consultation uniquement) : l'élève connecté voit ses formations, présences, compétences, exercices et les notes qui lui sont destinées.
 - **Export PDF** de l'évaluation par cursus.
 - **Vue mobile** : menu repliable, tableaux affichés en cartes, appel avec gros boutons présent / absent /
   excusé et bouton d'enregistrement collé en bas d'écran, saisie des compétences adaptée au tactile
@@ -34,7 +41,7 @@ Puis : **Saisons et formations** → créer une saison (la marquer active) et un
 
 ## Importer une formation (JSON)
 
-**Saisons et formations → Formations → Importer** permet de créer un cursus complet en collant du JSON.
+**Saisons et cursus → Cursus → Importer** permet de créer un cursus complet en collant du JSON.
 
 ```json
 {

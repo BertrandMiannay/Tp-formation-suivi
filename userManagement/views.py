@@ -102,14 +102,20 @@ class HomeView(LoginRequiredMixin, TemplateView):
                 'visible': user.is_club_staff,
             },
             {
+                'title': 'Formations',
+                'description': 'Formations en cours, inscriptions des élèves et progression.',
+                'url': '/formations/',
+                'visible': user.is_club_staff,
+            },
+            {
                 'title': 'Mon suivi',
                 'description': 'Mes présences, compétences, exercices et remarques des encadrants.',
                 'url': '/suivi/mon-suivi/',
                 'visible': hasattr(user, 'student_profile'),
             },
             {
-                'title': 'Saisons et formations',
-                'description': 'Gérer les saisons et les cursus (catégories, compétences).',
+                'title': 'Saisons et cursus',
+                'description': 'Gérer les saisons (regroupement des séances) et les cursus (catégories, compétences).',
                 'url': '/gestion/',
                 'visible': user.is_administrator,
             },

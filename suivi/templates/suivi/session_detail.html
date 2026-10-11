@@ -11,13 +11,11 @@
         <p class="muted" style="margin-bottom:1rem;">
             {% if session.title %}{{ session.title }}{% endif %}
             {% if session.location %} · {{ session.location }}{% endif %}
-            {% for c in session.cursus.all %} <span class="badge badge-cursus">{{ c.name }}</span>{% endfor %}
+            {% for f in session_formations %} <a href="{% url 'formation-detail' f.pk %}" class="badge badge-cursus" style="text-decoration:none;">{{ f.name }}</a>{% endfor %}
         </p>
-        {% if session.instructors.all %}
-        <p class="muted" style="margin-bottom:1rem; font-size:0.9rem;">Encadrants :
-            {% for u in session.instructors.all %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
-        </p>
-        {% endif %}
+        {% with users=session.instructors.all %}{% if users %}
+        <p class="muted" style="margin-bottom:1rem; font-size:0.9rem;">Encadrants : {% include "formation/_user_names.html" %}</p>
+        {% endif %}{% endwith %}
     </div>
     <div class="actions" style="margin-bottom:1rem;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-card').style.display = document.getElementById('edit-card').style.display === 'none' ? '' : 'none'">Modifier</button>
@@ -85,20 +83,14 @@
     </table>
     <div class="sticky-actions"><button type="submit" class="btn btn-primary">Enregistrer l'appel</button></div>
     {% else %}
-    <p class="muted">Aucun élève attendu : associez un niveau à la séance, et vérifiez que les élèves ont ce niveau et la saison de la séance (fiche élève → Modifier).</p>
+    <p class="muted">Aucun élève attendu : associez une formation à la séance (Modifier), ou ajoutez des participants ci-dessous.</p>
     {% endif %}
 </form>
-{% if addable_members %}
-<form method="post" class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-    {% csrf_token %}
-    <input type="hidden" name="_action" value="add_member">
-    <label style="margin:0;">Ajouter un participant hors niveau :</label>
-    <select name="member_id" style="width:auto; flex:1; min-width:200px;">
-        {% for m in addable_members %}<option value="{{ m.pk }}">{{ m.last_name }} {{ m.first_name }}</option>{% endfor %}
-    </select>
-    <button type="submit" class="btn btn-secondary">Ajouter (présent)</button>
-</form>
-{% endif %}
+<div class="card">
+    <h2>Ajouter un participant</h2>
+    {% include "formation/_add_student_forms.html" with existing_action="add_member" existing_label="Ajouter (présent)" create_label="Créer (présent)" formations=session_formations %}
+    <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">L'élève est créé sans compte : l'email et l'invitation pourront être ajoutés plus tard depuis sa fiche.</p>
+</div>
 
 {# ---------------- Compétences travaillées par élève ---------------- #}
 <div class="card" id="competences">
@@ -162,7 +154,7 @@
                 <div class="sticky-actions"><button type="submit" class="btn btn-primary">Enregistrer pour {{ row.member.first_name }}</button></div>
             </form>
             {% else %}
-            <p class="muted" style="font-size:0.85rem; margin-top:0.5rem;">Aucune formation associée à cet élève.</p>
+            <p class="muted" style="font-size:0.85rem; margin-top:0.5rem;">Cet élève n'est inscrit à aucune formation (fiche élève → Informations).</p>
             {% endif %}
         </details>
         {% endfor %}

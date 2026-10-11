@@ -1,0 +1,41 @@
+{% extends "suivi/base.html" %}
+
+{% block title %}Formations{% endblock %}
+
+{% block suivi_content %}
+<div class="page-header">
+    <h1>Formations</h1>
+    {% if user.is_administrator %}
+    <div class="actions"><a href="{% url 'formation-create' %}" class="btn btn-primary">+ Nouvelle formation</a></div>
+    {% endif %}
+</div>
+
+{% for formation in active_formations %}
+<a href="{% url 'formation-detail' formation.pk %}" class="card" style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; text-decoration:none; color:inherit;">
+    <span>
+        <strong style="color:#1a1a2e; font-size:1.05rem;">{{ formation.name }}</strong>
+        <span class="badge badge-cursus">{{ formation.cursus.name }}</span>
+        <span class="muted" style="display:block; font-size:0.85rem; margin-top:0.25rem;">
+            {% if formation.start_date %}du {{ formation.start_date|date:"d/m/Y" }}{% endif %}{% if formation.end_date %} au {{ formation.end_date|date:"d/m/Y" }}{% endif %}
+            {% with users=formation.managers.all %}{% if users %} · Responsable{{ users|length|pluralize }} :
+                {% include "formation/_user_names.html" %}
+            {% endif %}{% endwith %}
+        </span>
+    </span>
+    <span class="muted">{{ formation.student_count }} élève{{ formation.student_count|pluralize }}</span>
+</a>
+{% empty %}
+<p class="muted">Aucune formation en cours.{% if user.is_administrator %} Créez-en une à partir d'un cursus (« + Nouvelle formation »).{% else %} Un administrateur doit en créer une.{% endif %}</p>
+{% endfor %}
+
+{% if closed_formations %}
+<details style="margin-top:2rem;">
+    <summary style="cursor:pointer; color:#6b7280;">Formations terminées ({{ closed_formations|length }})</summary>
+    <ul style="margin-top:0.75rem; padding-left:1.25rem;">
+        {% for formation in closed_formations %}
+        <li><a href="{% url 'formation-detail' formation.pk %}" style="color:#1a1a2e;">{{ formation.name }}</a> <span class="muted" style="font-size:0.85rem;">{{ formation.cursus.name }}</span></li>
+        {% endfor %}
+    </ul>
+</details>
+{% endif %}
+{% endblock %}

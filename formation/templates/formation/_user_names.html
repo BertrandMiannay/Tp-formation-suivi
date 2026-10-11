@@ -1,0 +1,1 @@
+{% for u in users %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
