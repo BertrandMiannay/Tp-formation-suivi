@@ -29,7 +29,7 @@ Migrations: a single `0001_initial` per app (squashed before the first deploymen
 - `Dockerfile` (python:3.13-slim, Poetry sans venv, `collectstatic` au build, utilisateur non-root, SQLite dans le volume `/data`).
 - `docker/entrypoint.sh` : `migrate` à chaque démarrage, puis gunicorn.
 - `docker-compose.yml` : service `web`, image `ghcr.io/bertrandmiannay/tp-formation-suivi:${IMAGE_TAG:-latest}`, port `127.0.0.1:${APP_PORT:-8000}`, nginx sur l'hôte (`deploy/nginx.conf`).
-- `.github/workflows/docker-publish.yml` (manuel) publie `latest` + `sha-<commit>` ; `ci.yml` : tests, check migrations, build image.
+- `.github/workflows/docker-publish.yml` (manuel) publie `latest` + `sha-<commit>` et passe `APP_VERSION` (n° d'exécution, commit court, date) en build-arg, affichés sur la page Utilisateurs (admin ; « dev » en local) ; `ci.yml` : tests, check migrations, build image.
 - Production : https://botouraineplongee.ddns.net (remplace helloAssoManager sur le même serveur). `HEALTHCHECK` sur `/health/`, mise à jour automatique `deploy/update.sh` (cron hôte toutes les 5 min : pull, redémarrage si l'image a changé), SQLite en WAL.
 - Mise à jour serveur : `docker compose pull && docker compose up -d`. Voir `deploy/DEPLOY.md`.
 

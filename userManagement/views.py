@@ -3,6 +3,7 @@ import uuid
 from datetime import timedelta
 from functools import wraps
 
+from django.conf import settings
 from django.contrib.auth import get_user_model, login, update_session_auth_hash
 from django.contrib import messages
 from django.contrib.auth.forms import SetPasswordForm
@@ -212,6 +213,7 @@ class UserListView(AdminRequiredMixin, ListView):
             ) if u.invite_token else None)
             for u in ctx['users']
         ]
+        ctx['app_version'] = settings.APP_VERSION
         return ctx
 
 
