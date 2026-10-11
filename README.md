@@ -28,6 +28,9 @@ Puis : **Saisons et formations** → créer une saison (la marquer active) et un
 - **Exercices et notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
 - **Mon suivi** : l'élève connecté voit ses présences, compétences, exercices et les notes qui lui sont destinées.
 - **Export PDF** de l'évaluation par cursus.
+- **Vue mobile** : menu repliable, tableaux affichés en cartes, appel avec gros boutons présent / absent /
+  excusé et bouton d'enregistrement collé en bas d'écran, saisie des compétences adaptée au tactile
+  (styles dans `templates/base.html` et `suivi/templates/suivi/base.html`, breakpoint 640px).
 
 ## Importer une formation (JSON)
 

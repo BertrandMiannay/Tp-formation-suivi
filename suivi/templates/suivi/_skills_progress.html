@@ -12,14 +12,14 @@
     {% for cat in cursus.categories %}
     <div style="margin-top:0.75rem;">
         <div style="font-size:0.8rem; font-weight:600; text-transform:uppercase; color:#6b7280; margin-bottom:0.25rem;">{{ cat.name }}</div>
-        <table style="box-shadow:none;">
+        <table class="skills-table" style="box-shadow:none;">
             <tbody>
             {% for s in cat.skills %}
                 <tr>
-                    <td data-label="Compétence" style="font-size:0.9rem;">{{ s.name }}</td>
-                    <td data-label="Statut" style="width:190px;"><span class="badge badge-{{ s.status }}">{{ s.status_display }}</span></td>
-                    <td data-label="Travaillée" style="width:170px; font-size:0.85rem;" class="muted">{% if s.worked %}{{ s.worked }} séance{{ s.worked|pluralize }}{% else %}pas encore travaillée{% endif %}</td>
-                    <td data-label="Dernière éval." style="font-size:0.8rem;" class="muted">{% if s.last_eval %}{{ s.last_eval.date|date:"d/m/Y" }}{% if s.last_eval.author %} · {{ s.last_eval.author.get_full_name|default:s.last_eval.author.username }}{% endif %}{% if s.last_eval.comment %} — {{ s.last_eval.comment }}{% endif %}{% endif %}</td>
+                    <td class="sp-name" style="font-size:0.9rem;">{{ s.name }}</td>
+                    <td class="sp-status" style="width:190px;"><span class="badge badge-{{ s.status }}">{{ s.status_display }}</span></td>
+                    <td class="sp-worked muted" style="width:170px; font-size:0.85rem;">{% if s.worked %}{{ s.worked }} séance{{ s.worked|pluralize }}{% else %}pas encore travaillée{% endif %}</td>
+                    <td class="sp-eval muted" style="font-size:0.8rem;">{% if s.last_eval %}{{ s.last_eval.date|date:"d/m/Y" }}{% if s.last_eval.author %} · {{ s.last_eval.author.get_full_name|default:s.last_eval.author.username }}{% endif %}{% if s.last_eval.comment %} — {{ s.last_eval.comment }}{% endif %}{% endif %}</td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -30,3 +30,14 @@
 {% empty %}
 <p class="muted">Aucune formation associée.</p>
 {% endfor %}
+<style>
+@media (max-width: 640px) {
+    /* Nom + statut sur une ligne, puis nombre de séances et dernière évaluation en petit. */
+    .skills-table tr { display:grid; grid-template-columns:1fr auto; column-gap:0.5rem; padding:0.5rem 0; }
+    .skills-table td { display:block; border:none; padding:0 !important; }
+    .sp-name { grid-column:1; }
+    .sp-status { grid-column:2; grid-row:1; }
+    .sp-worked, .sp-eval { grid-column:1 / -1; }
+    .sp-eval:empty { display:none; }
+}
+</style>

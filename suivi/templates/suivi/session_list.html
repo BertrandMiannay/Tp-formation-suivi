@@ -3,11 +3,11 @@
 {% block title %}Séances{% endblock %}
 
 {% block suivi_content %}
-<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
-    <h1 style="margin:0;">Séances{% if season %} — {{ season.label }}{% endif %}</h1>
-    <div style="display:flex; gap:0.75rem; align-items:center;">
+<div class="page-header">
+    <h1>Séances{% if season %} — {{ season.label }}{% endif %}</h1>
+    <div class="actions">
         <form method="get">
-            <select name="season" onchange="this.form.submit()" style="width:auto;">
+            <select name="season" onchange="this.form.submit()" aria-label="Saison">
                 {% for s in seasons %}
                 <option value="{{ s.pk }}" {% if season and s.pk == season.pk %}selected{% endif %}>{{ s.label }}{% if s.current %} (en cours){% endif %}</option>
                 {% endfor %}
@@ -29,8 +29,8 @@
             <th>Thème</th>
             <th>Niveaux</th>
             <th>Présents</th>
-            <th>Absents</th>
-            <th>Compétences</th>
+            <th class="hide-sm">Absents</th>
+            <th class="hide-sm">Compétences</th>
         </tr>
     </thead>
     <tbody>
@@ -40,8 +40,8 @@
             <td data-label="Thème">{{ s.title|default:"—" }}</td>
             <td data-label="Niveaux">{% for c in s.cursus.all %}<span class="badge badge-cursus">{{ c.name }}</span> {% empty %}—{% endfor %}</td>
             <td data-label="Présents">{{ s.present_count }}</td>
-            <td data-label="Absents">{{ s.absent_count }}</td>
-            <td data-label="Compétences">{{ s.skill_count }}</td>
+            <td data-label="Absents" class="hide-sm">{{ s.absent_count }}</td>
+            <td data-label="Compétences" class="hide-sm">{{ s.skill_count }}</td>
         </tr>
         {% endfor %}
     </tbody>

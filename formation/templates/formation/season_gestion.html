@@ -30,9 +30,9 @@
     <tbody>
         {% for season in seasons %}
         <tr>
-            <td>{{ season.label }}</td>
-            <td>{% if season.current %}★{% endif %}</td>
-            <td style="display:flex; gap:0.5rem;">
+            <td data-label="Saison">{{ season.label }}</td>
+            <td data-label="Active">{% if season.current %}★{% else %}—{% endif %}</td>
+            <td style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                 {% if not season.current %}
                 <form method="post" action="{% url 'saison-set-current' season.pk %}">
                     {% csrf_token %}
