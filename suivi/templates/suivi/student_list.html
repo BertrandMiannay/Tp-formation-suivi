@@ -4,19 +4,34 @@
 
 {% block suivi_content %}
 <div class="page-header">
-    <h1>Élèves</h1>
+    <h1>Élèves{% if view == 'presences' and season %} — présences {{ season.label }}{% endif %}</h1>
     <div class="actions">
     <form method="get">
+        {% if view == 'presences' %}<input type="hidden" name="vue" value="presences">{% endif %}
         <select name="formation" onchange="this.form.submit()" aria-label="Formation">
             <option value="">En formation</option>
             {% for f in formation_list %}<option value="{{ f.pk }}" {% if f.pk == formation_id %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
-            <option value="all" {% if show_all %}selected{% endif %}>Tous les élèves</option>
+            {% if view == 'liste' %}<option value="all" {% if show_all %}selected{% endif %}>Tous les élèves</option>{% endif %}
         </select>
     </form>
     <a href="{% url 'eleve-create' %}" class="btn btn-primary">+ Nouvel élève</a>
     </div>
 </div>
 
+<div class="view-switch" role="tablist">
+    <a href="?{% if formation_id %}formation={{ formation_id }}{% elif show_all %}formation=all{% endif %}" class="{% if view == 'liste' %}active{% endif %}">Liste</a>
+    <a href="?vue=presences{% if formation_id %}&formation={{ formation_id }}{% endif %}" class="{% if view == 'presences' %}active{% endif %}">Présences</a>
+</div>
+
+{% if view == 'presences' %}
+    {% if not sessions %}
+    <p class="muted">Aucune séance pour la saison en cours.</p>
+    {% elif not rows %}
+    <p class="muted">Aucun élève en formation.</p>
+    {% else %}
+    {% include "suivi/_attendance_matrix.html" %}
+    {% endif %}
+{% else %}
 <input type="text" id="search" placeholder="Rechercher un élève…" style="max-width:400px; margin-bottom:1rem;">
 
 {% if rows %}
@@ -45,5 +60,6 @@ document.getElementById('search').addEventListener('input', function () {
 </script>
 {% else %}
 <p class="muted">Aucun élève{% if not show_all %} en formation{% endif %} : créez-en un avec « + Nouvel élève » ou depuis une formation.</p>
+{% endif %}
 {% endif %}
 {% endblock %}

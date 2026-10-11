@@ -13,6 +13,7 @@ from formation.forms import FormationForm, QuickStudentForm, StudentForm
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
+from suivi.views import attendance_matrix
 from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
 from userManagement.models import Role
 
@@ -221,6 +222,7 @@ def formation_detail(request, pk):
         'pct': round(100 * acquired.get(e.member_id, 0) / skill_total) if skill_total else 0,
     } for e in enrollments]
     addable_members = Member.objects.exclude(enrollments__formation=formation).order_by('last_name', 'first_name')
+    sessions = list(formation.training_sessions.order_by('date', 'pk'))
     return render(request, 'formation/formation_detail.html', {
         'formation': formation,
         'rows': rows,
@@ -229,7 +231,8 @@ def formation_detail(request, pk):
         'addable_members': addable_members,
         'quick_form': quick_form,
         'edit_form': edit_form,
-        'sessions': formation.training_sessions.order_by('-date')[:10],
+        'sessions': sessions,
+        'attendance_rows': attendance_matrix(sessions, [e.member for e in enrollments]),
         'active_tab': 'formations',
     })
 

@@ -389,13 +389,33 @@ def session_delete(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# Présences (vue d'ensemble)
+# Élèves (liste et tableau des présences)
 # ---------------------------------------------------------------------------
+
+def attendance_matrix(sessions, students):
+    """Tableau des présences : une ligne par élève, une cellule {session, att (Attendance ou None)}
+    par séance."""
+    att_map = {
+        (a.member_id, a.session_id): a
+        for a in Attendance.objects.filter(session__in=sessions, member__in=students)
+    }
+    rows = []
+    for m in students:
+        cells = [{'session': s, 'att': att_map.get((m.pk, s.pk))} for s in sessions]
+        rows.append({'member': m, 'cells': cells, 'stats': _attendance_stats([c['att'] for c in cells if c['att']])})
+    return rows
+
 
 @club_staff_required
 def attendance_overview(request):
-    season = _current_season()
-    formation_list, formation_id = _formation_filter(request)
+    """Ancienne page « Présences », désormais une vue de la liste des élèves."""
+    url = reverse('suivi-students') + '?vue=presences'
+    if request.GET.get('formation'):
+        url += '&formation=' + request.GET['formation']
+    return redirect(url)
+
+
+def _attendance_context(season, formation_id):
     sessions = TrainingSession.objects.filter(season=season).order_by('date', 'pk')
     if formation_id:
         sessions = list(sessions.filter(formations=formation_id))
@@ -406,37 +426,26 @@ def attendance_overview(request):
         attended = Attendance.objects.filter(session__in=sessions).values('member_id')
         students = Member.objects.filter(Q(pk__in=_students()) | Q(pk__in=attended))
     students = list(students.order_by('last_name', 'first_name'))
-    att_map = {
-        (a.member_id, a.session_id): a
-        for a in Attendance.objects.filter(session__in=sessions, member__in=students)
-    }
-    rows = []
-    for m in students:
-        cells = [att_map.get((m.pk, s.pk)) for s in sessions]
-        rows.append({
-            'member': m,
-            'cells': cells,
-            'stats': _attendance_stats([c for c in cells if c]),
-        })
-    return render(request, 'suivi/attendance_overview.html', {
-        'season': season,
-        'sessions': sessions,
-        'rows': rows,
-        'formation_list': formation_list,
-        'formation_id': formation_id,
-        'active_tab': 'presences',
-    })
+    return {'sessions': sessions, 'rows': attendance_matrix(sessions, students)}
 
-
-# ---------------------------------------------------------------------------
-# Élèves
-# ---------------------------------------------------------------------------
 
 @club_staff_required
 def student_list(request):
     season = _current_season()
     formation_list, formation_id = _formation_filter(request)
     show_all = request.GET.get('formation') == 'all'
+    context = {
+        'season': season,
+        'formation_list': formation_list,
+        'formation_id': formation_id,
+        'show_all': show_all,
+        'view': 'presences' if request.GET.get('vue') == 'presences' else 'liste',
+        'active_tab': 'eleves',
+    }
+    if context['view'] == 'presences':
+        context.update(_attendance_context(season, formation_id))
+        return render(request, 'suivi/student_list.html', context)
+
     students = Member.objects.order_by('last_name', 'first_name') if show_all else _students(formation_id)
     students = students.prefetch_related(Prefetch(
         'enrollments', queryset=Enrollment.objects.select_related('formation').filter(status=Enrollment.Status.ACTIVE),
@@ -452,14 +461,8 @@ def student_list(request):
     for m in students:
         rate = round(100 * m.present_count / m.attendance_count) if m.attendance_count else None
         rows.append({'member': m, 'rate': rate})
-    return render(request, 'suivi/student_list.html', {
-        'season': season,
-        'rows': rows,
-        'formation_list': formation_list,
-        'formation_id': formation_id,
-        'show_all': show_all,
-        'active_tab': 'eleves',
-    })
+    context['rows'] = rows
+    return render(request, 'suivi/student_list.html', context)
 
 
 @club_staff_required

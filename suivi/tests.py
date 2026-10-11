@@ -115,9 +115,18 @@ class SuiviTestCase(SuiviFixtures):
         Attendance.objects.create(session=session, member=self.alice, status='present')
         WorkedSkill.objects.create(session=session, member=self.alice, skill=self.skill_a, status='in_progress')
 
-        resp = self.client.get(reverse('suivi-attendance'))
+        resp = self.client.get(reverse('suivi-students') + '?vue=presences')
         self.assertContains(resp, 'Martin Alice')
         self.assertContains(resp, '100 %')
+        self.assertContains(resp, 'class="att-card"')
+        # L'ancienne page « Présences » redirige vers la vue présences de la liste des élèves
+        self.assertRedirects(
+            self.client.get(reverse('suivi-attendance') + f'?formation={self.formation.pk}'),
+            reverse('suivi-students') + f'?vue=presences&formation={self.formation.pk}',
+        )
+        resp = self.client.get(reverse('formation-detail', args=[self.formation.pk]))
+        self.assertContains(resp, 'id="presences"')
+        self.assertContains(resp, '1/1 · 100 %')
         resp = self.client.get(reverse('suivi-students'))
         self.assertContains(resp, 'Martin Alice')
         self.assertEqual(self.client.get(reverse('suivi-sessions')).status_code, 200)

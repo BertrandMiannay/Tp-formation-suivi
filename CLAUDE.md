@@ -42,6 +42,12 @@ Migrations: a single `0001_initial` per app (squashed before the first deploymen
 - **`userManagement/`** — `CustomUser` (`role`, `role_label`, `is_administrator`, `is_club_staff`), `Role` (3 rôles = 3 groupes, créés en `post_migrate`), inscription uniquement sur invitation (lien généré, pas d'email envoyé ; le rôle est choisi à l'invitation). Mot de passe oublié : lien de réinitialisation généré par un admin (tout compte) ou un encadrant (comptes élèves, depuis la fiche) — `default_token_generator`, 7 jours, usage unique.
 - **`config/`** — settings, URLs, ASGI/WSGI.
 
+### Interface
+
+- Navigation encadrants : Séances · Élèves · Formations (barre du haut ; sur mobile, barre d'onglets en bas d'écran avec « Plus » pour le reste du menu). `active_tab` dans le contexte marque l'onglet actif.
+- Présences : vue « Présences » de la liste des élèves (`/suivi/eleves/?vue=presences`, l'ancienne `/suivi/presences/` y redirige) et section « Présences » du détail de formation ; gabarit partagé `suivi/_attendance_matrix.html` (tableau sur ordinateur, cartes à pastilles sur mobile), données via `suivi.views.attendance_matrix`.
+- Application installable (PWA légère, sans service worker) : `static/manifest.webmanifest`, icônes dans `static/` (`STATICFILES_DIRS`).
+
 ### Role System
 
 | Groupe | Label | Accès |
