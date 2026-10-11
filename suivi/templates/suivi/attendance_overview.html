@@ -3,10 +3,10 @@
 {% block title %}Présences{% endblock %}
 
 {% block suivi_content %}
-<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
-    <h1 style="margin:0;">Présences{% if season %} — {{ season.label }}{% endif %}</h1>
-    <form method="get">
-        <select name="cursus" onchange="this.form.submit()" style="width:auto;">
+<div class="page-header">
+    <h1>Présences{% if season %} — {{ season.label }}{% endif %}</h1>
+    <form method="get" class="actions">
+        <select name="cursus" onchange="this.form.submit()" aria-label="Niveau">
             <option value="">Tous les niveaux</option>
             {% for c in cursus_list %}<option value="{{ c.pk }}" {% if c.pk == cursus_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
         </select>
@@ -22,9 +22,11 @@
 .att-matrix { overflow-x:auto; }
 .att-matrix table { display:table; width:auto; min-width:100%; }
 .att-matrix thead { display:table-header-group; }
-.att-matrix tr { display:table-row; }
+.att-matrix tbody { display:table-row-group; }
+.att-matrix table { background:white; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+.att-matrix tr { display:table-row; border:none; box-shadow:none; }
 .att-matrix th, .att-matrix td { display:table-cell; padding:0.4rem 0.5rem; text-align:center; white-space:nowrap; font-size:0.85rem; }
-.att-matrix td::before { content:none; }
+.att-matrix th, .att-matrix td { border-bottom:1px solid #eee; }
 .att-matrix th:first-child, .att-matrix td:first-child { text-align:left; position:sticky; left:0; background:white; }
 .cell-present { background:#dcfce7; color:#166534; }
 .cell-absent { background:#fee2e2; color:#991b1b; }

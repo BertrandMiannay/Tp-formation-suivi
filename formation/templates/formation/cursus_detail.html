@@ -12,11 +12,16 @@
   }
   .category-header {
     background: #f8f9fa; padding: 0.75rem 1rem;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
   }
   .skill-row {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
     padding: 0.5rem 1rem; border-top: 1px solid #f0f0f0;
+  }
+  @media (max-width: 640px) {
+    .category-header, .skill-row { padding: 0.6rem 0.75rem; }
+    .add-category-form { flex-wrap: wrap; }
+    .add-category-form input { max-width: none !important; }
   }
   .drag-handle {
     color: #9ca3af; margin-right: 0.75rem; cursor: grab; user-select: none; font-size: 1.1rem;
@@ -113,7 +118,7 @@
     {% endfor %}
   </div>
 
-  <form method="post" style="display:flex; gap:0.5rem; margin-top:1rem;">
+  <form method="post" class="add-category-form" style="display:flex; gap:0.5rem; margin-top:1rem;">
     {% csrf_token %}
     <input type="hidden" name="_action" value="add_category">
     <input type="text" name="category_name" placeholder="Nouvelle catégorie…"

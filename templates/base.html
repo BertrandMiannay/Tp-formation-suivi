@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Suivi formation{% endblock %}</title>
+    <meta name="theme-color" content="#1a1a2e">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; }
+        body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; -webkit-text-size-adjust: 100%; }
         nav { background: #1a1a2e; color: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
         nav a { color: #ccc; text-decoration: none; }
         nav a:hover { color: white; }
-        nav .brand { font-weight: bold; font-size: 1.1rem; color: white; }
+        nav .brand { font-weight: bold; font-size: 1.1rem; color: white; white-space: nowrap; }
         nav .spacer { flex: 1; }
+        .nav-links { display: flex; align-items: center; gap: 1.5rem; flex: 1; }
+        .nav-toggle { display: none; margin-left: auto; background: none; border: 1px solid #4b4b6b; border-radius: 4px; color: white; font-size: 1.25rem; line-height: 1; padding: 0.4rem 0.6rem; cursor: pointer; }
         .messages { padding: 0.75rem 1.5rem; }
         .messages .message { padding: 0.5rem 1rem; margin-bottom: 0.5rem; border-radius: 4px; }
         .messages .message.success { background: #d4edda; color: #155724; }
@@ -34,40 +37,77 @@
         label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
         input, select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
         input:focus, select:focus { outline: none; border-color: #1a1a2e; }
-        .form-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+        .form-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+        /* En-tête de page : titre à gauche, actions à droite (passent à la ligne sur mobile). */
+        .page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+        .page-header h1 { margin: 0; }
+        .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .actions select { width: auto; }
+        .show-sm { display: none; }
 
         @media (max-width: 640px) {
             main { margin: 1rem auto; padding: 0 0.75rem; }
-            nav { gap: 1rem; padding: 0.75rem 1rem; flex-wrap: wrap; }
+            h1 { font-size: 1.35rem; margin-bottom: 1rem; }
+            nav { padding: 0.6rem 0.75rem; flex-wrap: wrap; gap: 0; }
+            .nav-toggle { display: block; }
+            .nav-links { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; margin-top: 0.5rem; }
+            nav.open .nav-links { display: flex; }
+            .nav-links a { padding: 0.75rem 0.25rem; border-top: 1px solid #2c2c48; font-size: 1.05rem; }
+            .nav-links .spacer { display: none; }
+            .messages { padding: 0.5rem 0.75rem 0; }
+            /* Cibles tactiles plus grandes ; 16px évite le zoom automatique d'iOS sur les champs. */
+            .btn { padding: 0.6rem 1rem; font-size: 0.95rem; min-height: 2.5rem; }
+            input, select, textarea { font-size: 16px !important; }
+            input[type=checkbox], input[type=radio] { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+            .form-card { padding: 1.25rem; }
+            .page-header { gap: 0.75rem; }
+            .page-header .actions { width: 100%; }
+            .page-header .actions > * { flex: 1 1 auto; }
+            .page-header .actions select, .page-header .actions form { width: 100%; }
+            .hide-sm { display: none !important; }
+            .show-sm { display: inline; }
+            /* Tableaux → cartes empilées (libellé de colonne repris via data-label). */
             table, thead, tbody, tr, th, td { display: block; }
             thead { display: none; }
             table { box-shadow: none; background: transparent; }
             tr { background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
-            td { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f0f0f0; padding: 0.6rem 1rem; }
+            td { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; border-bottom: 1px solid #f0f0f0; padding: 0.6rem 1rem; }
             td:last-child { border-bottom: none; }
-            td::before { content: attr(data-label); font-weight: 600; color: #555; flex-shrink: 0; margin-right: 1rem; }
+            td[data-label]::before { content: attr(data-label); font-weight: 600; color: #555; flex-shrink: 0; margin-right: 0.5rem; }
+            th, td { width: auto !important; }
+            td.stack { display: block; }
+            td.stack::before { display: block; margin: 0 0 0.25rem; }
+            tbody th { border-bottom: none; padding-bottom: 0; background: none; color: #555; font-size: 0.85rem; }
+            /* Tableaux imbriqués dans une carte : simple liste, pas de carte dans la carte. */
+            .card table tr, details table tr, .list-table tr { border-width: 0 0 1px; border-radius: 0; box-shadow: none; margin-bottom: 0; }
         }
     </style>
 </head>
 <body>
-<nav>
+<nav id="main-nav">
     {% if user.is_authenticated %}
         <a href="/" class="brand">Suivi formation</a>
-        {% if user.is_club_staff %}
-            <a href="{% url 'suivi-sessions' %}">Séances</a>
-            <a href="{% url 'suivi-students' %}">Élèves</a>
-        {% endif %}
-        {% if user.student_profile %}
-            <a href="{% url 'suivi-mine' %}">Mon suivi</a>
-        {% endif %}
-        {% if user.is_administrator %}
-            <a href="{% url 'saison-gestion' %}">Saisons et formations</a>
-            <a href="/users/">Utilisateurs</a>
-        {% endif %}
-        <span class="spacer"></span>
-        <a href="{% url 'userManagement:change_password' %}">{{ user.username }}</a>
-        <a href="/accounts/logout/">Déconnexion</a>
+        <button type="button" class="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"
+                onclick="const n = document.getElementById('main-nav'); this.setAttribute('aria-expanded', n.classList.toggle('open'));">☰</button>
+        <div class="nav-links" id="nav-links">
+            {% if user.is_club_staff %}
+                <a href="{% url 'suivi-sessions' %}">Séances</a>
+                <a href="{% url 'suivi-attendance' %}">Présences</a>
+                <a href="{% url 'suivi-students' %}">Élèves</a>
+            {% endif %}
+            {% if user.student_profile %}
+                <a href="{% url 'suivi-mine' %}">Mon suivi</a>
+            {% endif %}
+            {% if user.is_administrator %}
+                <a href="{% url 'saison-gestion' %}">Saisons et formations</a>
+                <a href="/users/">Utilisateurs</a>
+            {% endif %}
+            <span class="spacer"></span>
+            <a href="{% url 'userManagement:change_password' %}">{{ user.username }}{% if user.role %} · {{ user.role_label }}{% endif %}</a>
+            <a href="/accounts/logout/">Déconnexion</a>
+        </div>
     {% else %}
+        <span class="brand">Suivi formation</span>
         <span class="spacer"></span>
         <a href="/accounts/login/">Connexion</a>
     {% endif %}

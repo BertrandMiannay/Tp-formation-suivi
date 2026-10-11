@@ -14,7 +14,7 @@
             {% for f in formations %} <span class="badge badge-cursus">{{ f.name }}</span>{% endfor %}
         </p>
     </div>
-    <div style="display:flex; gap:0.5rem;">
+    <div class="actions" style="margin-bottom:1rem;">
         <a href="{% url 'eleve-edit' member.pk %}" class="btn btn-secondary">Modifier</a>
         <a href="{% url 'eleve-evaluation' member.pk %}" class="btn btn-secondary">Évaluer les compétences</a>
     </div>
@@ -46,7 +46,7 @@
     {% elif not member.user %}
     <div class="card" style="border-left:4px solid #f59e0b;"><p>Aucun compte rattaché : renseignez un email via « Modifier » pour créer le compte élève.</p></div>
     {% endif %}
-    <table style="max-width:600px;">
+    <table class="info-table" style="max-width:600px;">
         <tbody>
             <tr><th style="width:45%;">Email</th><td>{{ member.email|default:"—" }}</td></tr>
             <tr><th>Compte</th><td>{% if member.user.is_active %}{{ member.user.username }}{% elif member.user %}invitation envoyée{% else %}—{% endif %}</td></tr>

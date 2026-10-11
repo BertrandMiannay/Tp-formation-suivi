@@ -8,7 +8,7 @@
             <td data-label="Exercice">{{ ex.name }}</td>
             <td data-label="Compétence" style="font-size:0.85rem;">{{ ex.skill.name|default:"—" }}</td>
             <td data-label="Résultat"><span class="badge badge-{{ ex.result }}">{{ ex.get_result_display }}</span></td>
-            <td data-label="Commentaire" style="font-size:0.85rem; white-space:pre-line;">{{ ex.comment }}</td>
+            <td data-label="Commentaire" class="stack" style="font-size:0.85rem; white-space:pre-line;">{{ ex.comment }}</td>
             {% if staff_view %}
             <td>
                 <form method="post" class="inline-form" onsubmit="return confirm('Supprimer cet exercice ?');">

@@ -19,7 +19,7 @@
         </p>
         {% endif %}
     </div>
-    <div style="display:flex; gap:0.5rem;">
+    <div class="actions" style="margin-bottom:1rem;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-card').style.display = document.getElementById('edit-card').style.display === 'none' ? '' : 'none'">Modifier</button>
         <form method="post" action="{% url 'suivi-session-delete' session.pk %}" onsubmit="return confirm('Supprimer cette séance et toutes les présences associées ?');">
             {% csrf_token %}
@@ -56,32 +56,34 @@
     <input type="hidden" name="_action" value="attendance">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
         <h2 style="margin:0;">Appel</h2>
-        <div style="display:flex; gap:0.5rem;">
+        {% if roster_rows %}
+        <div class="actions">
             <button type="button" class="btn btn-secondary" onclick="setAll('present')">Tous présents</button>
             <button type="button" class="btn btn-secondary" onclick="setAll('absent')">Tous absents</button>
-            <button type="submit" class="btn btn-primary">Enregistrer l'appel</button>
         </div>
+        {% endif %}
     </div>
     {% if roster_rows %}
-    <table>
+    <table class="list-table attendance-table">
         <thead><tr><th>Élève</th><th>Présence</th><th>Commentaire</th></tr></thead>
         <tbody>
         {% for row in roster_rows %}
             <tr>
-                <td data-label="Élève"><a href="{% url 'suivi-student-detail' row.member.pk %}" style="color:#1a1a2e;">{{ row.member.last_name }} {{ row.member.first_name }}</a></td>
-                <td data-label="Présence">
+                <td class="att-name"><a href="{% url 'suivi-student-detail' row.member.pk %}" style="color:#1a1a2e;">{{ row.member.last_name }} {{ row.member.first_name }}</a></td>
+                <td>
                     <div class="radio-group">
                     {% for value, label in attendance_choices %}
-                        <label><input type="radio" class="att-radio" name="att_{{ row.member.pk }}" value="{{ value }}" {% if row.attendance.status == value %}checked{% endif %}> {{ label }}</label>
+                        <label class="att-{{ value }}"><input type="radio" class="att-radio" name="att_{{ row.member.pk }}" value="{{ value }}" {% if row.attendance.status == value %}checked{% endif %}> {{ label }}</label>
                     {% endfor %}
-                        <label class="muted"><input type="radio" name="att_{{ row.member.pk }}" value="" {% if not row.attendance %}checked{% endif %}> Non renseigné</label>
+                        <label class="muted"><input type="radio" name="att_{{ row.member.pk }}" value="" {% if not row.attendance %}checked{% endif %}> <span class="hide-sm">Non renseigné</span><span class="show-sm">?</span></label>
                     </div>
                 </td>
-                <td data-label="Commentaire"><input type="text" name="att_{{ row.member.pk }}_comment" value="{{ row.attendance.comment|default:'' }}" placeholder="Retard, raison de l'absence…" style="font-size:0.85rem; padding:0.3rem;"></td>
+                <td><input type="text" name="att_{{ row.member.pk }}_comment" value="{{ row.attendance.comment|default:'' }}" placeholder="Retard, raison de l'absence…" style="font-size:0.85rem; padding:0.3rem;"></td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
+    <div class="sticky-actions"><button type="submit" class="btn btn-primary">Enregistrer l'appel</button></div>
     {% else %}
     <p class="muted">Aucun élève attendu : associez un niveau à la séance, et vérifiez que les élèves ont ce niveau et la saison de la séance (fiche élève → Modifier).</p>
     {% endif %}
@@ -136,12 +138,12 @@
                             <tbody>
                             {% for sk in cat.skills %}
                             <tr class="ws-row" data-worked="{{ sk.worked|yesno:'1,0' }}">
-                                <td data-label="Travaillée" style="width:2rem;"><input type="checkbox" class="ws-check" name="ws_{{ sk.pk }}" value="1" {% if sk.worked %}checked{% endif %}></td>
-                                <td data-label="Compétence" style="font-size:0.9rem;">
+                                <td class="ws-cell-check" style="width:2rem;"><input type="checkbox" class="ws-check" name="ws_{{ sk.pk }}" value="1" {% if sk.worked %}checked{% endif %}></td>
+                                <td class="ws-cell-name" style="font-size:0.9rem;">
                                     {{ sk.name }}
                                     <span class="badge badge-{{ sk.global_status }}" title="Statut actuel" style="margin-left:0.25rem;">{{ sk.global_status_display }}</span>
                                 </td>
-                                <td data-label="Évaluation du jour" style="width:190px;">
+                                <td class="ws-cell-status" style="width:190px;">
                                     <select name="ws_{{ sk.pk }}_status" class="ws-status" style="font-size:0.85rem; padding:0.25rem;">
                                         <option value="">— Non évaluée</option>
                                         {% for value, label in status_choices %}
@@ -149,7 +151,7 @@
                                         {% endfor %}
                                     </select>
                                 </td>
-                                <td data-label="Commentaire"><input type="text" name="ws_{{ sk.pk }}_comment" value="{{ sk.comment }}" placeholder="Commentaire" style="font-size:0.85rem; padding:0.25rem;">{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
+                                <td class="ws-cell-comment"><input type="text" name="ws_{{ sk.pk }}_comment" value="{{ sk.comment }}" placeholder="Commentaire" style="font-size:0.85rem; padding:0.25rem;">{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
                             </tr>
                             {% endfor %}
                             </tbody>
@@ -157,7 +159,7 @@
                     </div>
                     {% endfor %}
                 {% endfor %}
-                <div class="form-actions"><button type="submit" class="btn btn-primary">Enregistrer pour {{ row.member.first_name }}</button></div>
+                <div class="sticky-actions"><button type="submit" class="btn btn-primary">Enregistrer pour {{ row.member.first_name }}</button></div>
             </form>
             {% else %}
             <p class="muted" style="font-size:0.85rem; margin-top:0.5rem;">Aucune formation associée à cet élève.</p>
@@ -210,6 +212,23 @@
 .ws-table td { padding:0.3rem 0.5rem; }
 .ws-row[data-worked="1"] td { background:#f0fdf4; }
 .only-worked-on .ws-row:not([data-worked="1"]) { display:none; }
+.student-skills > summary { padding:0.25rem 0; }
+@media (max-width: 640px) {
+    /* Appel : nom, puis présence sur toute la largeur, puis commentaire. */
+    .attendance-table tr { padding:0.6rem 0; }
+    .attendance-table td { display:block; border:none; padding:0.25rem 0; }
+    .attendance-table td.att-name { font-weight:600; }
+    /* Compétences : [case] nom + statut actuel, puis évaluation et commentaire pleine largeur. */
+    .ws-table tr.ws-row { display:grid; grid-template-columns:auto 1fr; column-gap:0.6rem; row-gap:0.35rem; padding:0.6rem 0.25rem; }
+    .ws-table td { display:block; border:none; padding:0 !important; width:auto !important; background:none !important; }
+    .ws-row[data-worked="1"] { background:#f0fdf4; }
+    .ws-cell-check { grid-row:1; align-self:center; }
+    .ws-cell-check input { width:1.5rem; height:1.5rem; }
+    .ws-cell-name { grid-row:1; align-self:center; }
+    .ws-cell-status, .ws-cell-comment { grid-column:1 / -1; }
+    .student-skills { padding:0.5rem !important; }
+    .student-skills > summary { padding:0.5rem 0.25rem; }
+}
 </style>
 <script>
 document.querySelectorAll('.student-skills').forEach(function (block) {
