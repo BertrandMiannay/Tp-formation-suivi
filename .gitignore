@@ -4,4 +4,6 @@
 __pycache__/
 .vscode/
 .claude/
-TO_DO.mdstaticfiles/
+TO_DO.md
+staticfiles/
+dits/
