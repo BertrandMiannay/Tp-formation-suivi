@@ -30,7 +30,7 @@ Migrations: a single `0001_initial` per app (squashed before the first deploymen
 - `docker/entrypoint.sh` : `migrate` à chaque démarrage, puis gunicorn.
 - `docker-compose.yml` : service `web`, image `ghcr.io/bertrandmiannay/tp-formation-suivi:${IMAGE_TAG:-latest}`, port `127.0.0.1:${APP_PORT:-8000}`, nginx sur l'hôte (`deploy/nginx.conf`).
 - `.github/workflows/docker-publish.yml` (manuel) publie `latest` + `sha-<commit>` ; `ci.yml` : tests, check migrations, build image.
-- Production : https://botouraineplongee.ddns.net (remplace helloAssoManager sur le même serveur). `HEALTHCHECK` sur `/health/`, sauvegardes `deploy/backup.sh` et mise à jour automatique `deploy/update.sh` (cron hôte toutes les 5 min : pull, sauvegarde + redémarrage si l'image a changé), SQLite en WAL.
+- Production : https://botouraineplongee.ddns.net (remplace helloAssoManager sur le même serveur). `HEALTHCHECK` sur `/health/`, mise à jour automatique `deploy/update.sh` (cron hôte toutes les 5 min : pull, redémarrage si l'image a changé), SQLite en WAL.
 - Mise à jour serveur : `docker compose pull && docker compose up -d`. Voir `deploy/DEPLOY.md`.
 
 ## Architecture

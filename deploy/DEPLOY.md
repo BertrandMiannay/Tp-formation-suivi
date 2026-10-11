@@ -29,7 +29,6 @@ BASE=https://raw.githubusercontent.com/BertrandMiannay/Tp-formation-suivi/main
 curl -fsSLO $BASE/docker-compose.yml
 curl -fsSLO $BASE/.env.example
 curl -fsSL  $BASE/deploy/nginx.conf -o nginx.conf
-curl -fsSL  $BASE/deploy/backup.sh  -o backup.sh && chmod +x backup.sh
 curl -fsSL  $BASE/deploy/update.sh  -o update.sh && chmod +x update.sh
 cp .env.example .env && chmod 600 .env
 # SECRET_KEY obligatoire (sinon le conteneur s'arrête au démarrage → 502) ; ne plus la changer ensuite
@@ -93,12 +92,10 @@ sudo rm -r /etc/helloasso ~/helloAssoManager      # garder l'archive de la base
 
 - **HSTS** : une fois le HTTPS vérifié, ajouter `SECURE_HSTS_SECONDS=31536000` dans `.env` puis `docker compose up -d`.
   Les navigateurs refuseront ensuite tout accès en HTTP pendant un an : ne l'activer que si le HTTPS est durable.
-- **Cron** (`crontab -e`) : sauvegarde quotidienne et mise à jour automatique (comme Juliettia).
+- **Mise à jour automatique** (comme Juliettia) : `crontab -e` puis
   ```cron
-  15 3 * * * cd ~/tp-formation-suivi && ./backup.sh >> backup.log 2>&1
   */5 * * * * cd ~/tp-formation-suivi && ./update.sh >> update.log 2>&1
   ```
-  Sauvegardes dans `~/tp-formation-suivi/backups/` (30 dernières conservées) : penser à copier ce dossier hors du serveur.
 
 ## Comptes et mots de passe
 
@@ -111,28 +108,18 @@ Aucun email n'est envoyé par l'application.
 ## Mise à jour
 
 Publier une nouvelle image (étape 1) : dans les 5 minutes, le cron lance `update.sh`, qui récupère l'image et,
-si elle a changé, sauvegarde la base, redémarre le conteneur (les migrations s'appliquent) et supprime les anciennes images.
+si elle a changé, redémarre le conteneur (les migrations s'appliquent) et supprime les anciennes images.
 Suivi : `tail update.log` et `docker compose ps`. Pour forcer sans attendre : `./update.sh`.
 
 Il n'y a pas de retour arrière automatique : si le conteneur ne passe pas `healthy`, voir `docker compose logs`.
 
 **Revenir à une version précédente** : mettre `IMAGE_TAG=sha-<commit>` dans `.env` puis `./update.sh`
-(le cron reste alors sur cette version ; remettre `latest` ensuite). Une migration déjà appliquée n'est pas annulée
-→ restaurer la sauvegarde faite par `update.sh` si besoin.
+(le cron reste alors sur cette version ; remettre `latest` ensuite). Une migration déjà appliquée n'est pas annulée.
 
-## Données et sauvegarde
+## Données
 
 La base SQLite est dans le volume Docker `tp-formation-suivi_data` (monté sur `/data`).
 Elle survit aux mises à jour et aux `docker compose down` (mais pas à `down -v`).
-
-Sauvegarde manuelle : `./backup.sh` (voir le script). Restauration :
-
-```bash
-docker compose stop
-docker compose cp backups/db-<date>.sqlite3 web:/data/db.sqlite3
-docker compose run --rm --entrypoint sh web -c 'rm -f /data/db.sqlite3-wal /data/db.sqlite3-shm'
-docker compose up -d
-```
 
 ## Commandes utiles
 
