@@ -32,11 +32,11 @@
                 {% endif %}
             </td>
             <td>
-                {% for g in u.groups.all %}
-                    <span style="background:#e9ecef; padding:0.2rem 0.6rem; border-radius:3px; font-size:0.85rem;">{{ g.name }}</span>
-                {% empty %}
+                {% if u.role %}
+                    <span style="background:#e9ecef; padding:0.2rem 0.6rem; border-radius:3px; font-size:0.85rem;">{{ u.role_label }}</span>
+                {% else %}
                     <span style="color:#999;">—</span>
-                {% endfor %}
+                {% endif %}
             </td>
             <td>
                 {% if invite_url %}

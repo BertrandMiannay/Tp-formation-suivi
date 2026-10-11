@@ -15,12 +15,10 @@ class SuiviTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         User = get_user_model()
-        for name in ['member', 'instructor', 'dive_director', 'admin']:
-            Group.objects.get_or_create(name=name)
         cls.instructor = User.objects.create_user('moniteur', 'moniteur@example.com', 'pwd')
         cls.instructor.groups.add(Group.objects.get(name='instructor'))
         cls.student_user = User.objects.create_user('eleve', 'alice@example.com', 'pwd')
-        cls.student_user.groups.add(Group.objects.get(name='member'))
+        cls.student_user.groups.add(Group.objects.get(name='student'))
 
         cls.season = Season.objects.create(label='2026-2027', current=True)
         cls.cursus = Cursus.objects.create(name='Niveau 1', date=date(2026, 1, 1))
@@ -200,7 +198,7 @@ class SuiviTestCase(TestCase):
         self.assertRedirects(resp, reverse('suivi-student-detail', args=[eve.pk]))
         self.assertEqual(eve.email, 'eve@example.com')
         self.assertFalse(eve.user.is_active)
-        self.assertTrue(eve.user.groups.filter(name='member').exists())
+        self.assertTrue(eve.user.groups.filter(name='student').exists())
 
         resp = self.client.get(reverse('suivi-student-detail', args=[eve.pk]))
         accept_url = reverse('userManagement:accept_invite', args=[eve.user.invite_token])

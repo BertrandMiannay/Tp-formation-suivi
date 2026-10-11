@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 
 from formation.models import Cursus, Skill
+from userManagement.models import STAFF_ROLES
 from .models import Exercise, StudentNote, TrainingSession
 
 
@@ -10,7 +11,7 @@ def staff_users():
     return (
         get_user_model().objects
         .filter(is_active=True)
-        .filter(Q(is_superuser=True) | Q(groups__name__in=['admin', 'instructor', 'dive_director']))
+        .filter(Q(is_superuser=True) | Q(groups__name__in=STAFF_ROLES))
         .distinct()
         .order_by('first_name', 'last_name', 'username')
     )

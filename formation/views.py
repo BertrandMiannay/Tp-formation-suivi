@@ -12,6 +12,7 @@ from django.urls import reverse
 
 from formation.models import Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation
 from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
+from userManagement.models import Role
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def student_create(request):
                 # Compte existant sans fiche (ex. encadrant qui suit une formation) : on le rattache.
                 user = get_user_model().objects.filter(email__iexact=email).first()
                 if user is None:
-                    user = create_invited_user(email, group_name='member')
+                    user = create_invited_user(email, group_name=Role.STUDENT)
                 member.user = user
                 member.save(update_fields=['user'])
             logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk, request.user.username)
@@ -97,7 +98,7 @@ def student_edit(request, pk):
             with transaction.atomic():
                 form.save()
                 if member.user_id is None:
-                    member.user = create_invited_user(email, group_name='member')
+                    member.user = create_invited_user(email, group_name=Role.STUDENT)
                     member.save(update_fields=['user'])
                 elif member.user.email != email:
                     member.user.email = email

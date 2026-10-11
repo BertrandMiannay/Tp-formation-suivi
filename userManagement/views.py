@@ -14,6 +14,8 @@ from django.views.generic import ListView, UpdateView, FormView, View, TemplateV
 from django.urls import reverse, reverse_lazy
 from django import forms
 
+from .models import Role
+
 logger = logging.getLogger(__name__)
 
 INVITE_EXPIRY_DAYS = 7
@@ -37,7 +39,7 @@ def _make_permission_decorator(check_fn):
 
 
 def _is_admin(user):
-    return user.is_administrator or user.is_superuser
+    return user.is_administrator
 
 
 admin_required = _make_permission_decorator(_is_admin)
@@ -109,13 +111,13 @@ class HomeView(LoginRequiredMixin, TemplateView):
                 'title': 'Saisons et formations',
                 'description': 'Gérer les saisons et les cursus (catégories, compétences).',
                 'url': '/gestion/',
-                'visible': user.is_administrator or user.is_superuser,
+                'visible': user.is_administrator,
             },
             {
                 'title': 'Utilisateurs',
                 'description': 'Gérer les comptes, les rôles et les invitations.',
                 'url': '/users/',
-                'visible': user.is_administrator or user.is_superuser,
+                'visible': user.is_administrator,
             },
         ]
         return ctx
@@ -125,27 +127,24 @@ class AdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
     """Allow access only to users in the 'admin' group."""
 
     def test_func(self):
-        return self.request.user.is_administrator or self.request.user.is_superuser
+        return self.request.user.is_administrator
 
 
 class ClubStaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """Allow access to instructors, dive directors and admins."""
+    """Allow access to instructors and admins."""
 
     def test_func(self):
         return _is_club_staff(self.request.user)
 
 
 class UserRoleForm(forms.Form):
-    role = forms.ChoiceField(choices=[
-        ('member', 'Membre'),
-        ('instructor', 'Formateur'),
-        ('dive_director', 'Directeur de plongée'),
-        ('admin', 'Administrateur'),
-    ])
+    role = forms.ChoiceField(label='Rôle', choices=Role.choices)
 
 
 class InvitationForm(forms.Form):
     email = forms.EmailField(label='Adresse email')
+    role = forms.ChoiceField(label='Rôle', choices=Role.choices, initial=Role.INSTRUCTOR,
+                             help_text="Pour un élève, préférez « Élèves → + Nouvel élève » qui crée aussi sa fiche.")
 
 
 class AcceptInviteForm(forms.Form):
@@ -199,6 +198,9 @@ class UserRoleUpdateView(AdminRequiredMixin, FormView):
     def get_target_user(self):
         return get_object_or_404(User, pk=self.kwargs['pk'])
 
+    def get_initial(self):
+        return {'role': self.get_target_user().role}
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['target_user'] = self.get_target_user()
@@ -226,7 +228,7 @@ class InviteView(AdminRequiredMixin, FormView):
             form.add_error('email', 'Un utilisateur avec cet email existe déjà.')
             return self.form_invalid(form)
 
-        user = create_invited_user(email)
+        user = create_invited_user(email, group_name=form.cleaned_data['role'])
         invite_url = invite_url_for(self.request, user)
         logger.info("INVITE_SENT to=%s by=%s expires_in=%dd",
                     email, self.request.user.username, INVITE_EXPIRY_DAYS)
