@@ -30,9 +30,11 @@ curl -fsSLO $BASE/docker-compose.yml
 curl -fsSLO $BASE/.env.example
 curl -fsSL  $BASE/deploy/nginx.conf -o nginx.conf
 curl -fsSL  $BASE/deploy/backup.sh  -o backup.sh && chmod +x backup.sh
+curl -fsSL  $BASE/deploy/update.sh  -o update.sh && chmod +x update.sh
 cp .env.example .env && chmod 600 .env
-python3 -c "import secrets; print(secrets.token_urlsafe(50))"   # → SECRET_KEY
-nano .env   # SECRET_KEY, premier administrateur (DJANGO_SUPERUSER_*)
+# SECRET_KEY obligatoire (sinon le conteneur s'arrête au démarrage → 502) ; ne plus la changer ensuite
+sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')|" .env
+nano .env   # premier administrateur (DJANGO_SUPERUSER_*)
 docker compose pull
 docker compose up -d
 docker compose ps           # STATUS « healthy » au bout de ~30 s
@@ -48,9 +50,10 @@ Vérifier avant que le port est libre : `ss -ltnp | grep 8000`.
 ## 3. Bascule : helloAssoManager → Tp-formation-suivi
 
 ```bash
-# a. Archiver l'ancienne base (chemin : DATABASE_URL dans /etc/helloasso/env)
-grep DATABASE_URL /etc/helloasso/env
-sudo cp <chemin>/db.sqlite3 ~/helloasso-db-$(date +%F).sqlite3
+# a. Archiver l'ancienne base : DATABASE_URL de /etc/helloasso/env si défini,
+#    sinon db.sqlite3 à la racine du dossier de l'app (WorkingDirectory du service)
+grep DATABASE_URL /etc/helloasso/env || grep WorkingDirectory /etc/systemd/system/helloasso.service
+cp ~/helloAssoManager/db.sqlite3 ~/helloasso-db-$(date +%F).sqlite3
 
 # b. Arrêter l'ancien service
 sudo systemctl disable --now helloasso
@@ -90,9 +93,12 @@ sudo rm -r /etc/helloasso ~/helloAssoManager      # garder l'archive de la base
 
 - **HSTS** : une fois le HTTPS vérifié, ajouter `SECURE_HSTS_SECONDS=31536000` dans `.env` puis `docker compose up -d`.
   Les navigateurs refuseront ensuite tout accès en HTTP pendant un an : ne l'activer que si le HTTPS est durable.
-- **Sauvegardes** : `crontab -e` puis
-  `15 3 * * * cd ~/tp-formation-suivi && ./backup.sh >> backups/backup.log 2>&1`
-  (copie quotidienne dans `~/tp-formation-suivi/backups/`, 30 dernières conservées). Penser à copier ce dossier hors du serveur.
+- **Cron** (`crontab -e`) : sauvegarde quotidienne et mise à jour automatique (comme Juliettia).
+  ```cron
+  15 3 * * * cd ~/tp-formation-suivi && ./backup.sh >> backup.log 2>&1
+  */5 * * * * cd ~/tp-formation-suivi && ./update.sh >> update.log 2>&1
+  ```
+  Sauvegardes dans `~/tp-formation-suivi/backups/` (30 dernières conservées) : penser à copier ce dossier hors du serveur.
 
 ## Comptes et mots de passe
 
@@ -104,20 +110,15 @@ Aucun email n'est envoyé par l'application.
 
 ## Mise à jour
 
-1. Publier une nouvelle image (étape 1).
-2. Sur le serveur :
+Publier une nouvelle image (étape 1) : dans les 5 minutes, le cron lance `update.sh`, qui récupère l'image et,
+si elle a changé, sauvegarde la base, redémarre le conteneur (les migrations s'appliquent) et supprime les anciennes images.
+Suivi : `tail update.log` et `docker compose ps`. Pour forcer sans attendre : `./update.sh`.
 
-```bash
-cd ~/tp-formation-suivi
-./backup.sh                  # conseillé avant une mise à jour
-docker compose pull && docker compose up -d
-docker image prune -f        # facultatif : supprime les anciennes images
-```
+Il n'y a pas de retour arrière automatique : si le conteneur ne passe pas `healthy`, voir `docker compose logs`.
 
-Les migrations sont appliquées automatiquement au redémarrage du conteneur.
-
-**Revenir à une version précédente** : `IMAGE_TAG=sha-<commit> docker compose up -d`
-(attention : une migration déjà appliquée n'est pas annulée → restaurer la sauvegarde si besoin).
+**Revenir à une version précédente** : mettre `IMAGE_TAG=sha-<commit>` dans `.env` puis `./update.sh`
+(le cron reste alors sur cette version ; remettre `latest` ensuite). Une migration déjà appliquée n'est pas annulée
+→ restaurer la sauvegarde faite par `update.sh` si besoin.
 
 ## Données et sauvegarde
 

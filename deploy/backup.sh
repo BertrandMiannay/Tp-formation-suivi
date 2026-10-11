@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sauvegarde à chaud de la base SQLite du conteneur, copiée sur l'hôte.
 # À lancer depuis le dossier du docker-compose.yml (ex. ~/tp-formation-suivi), par exemple en cron :
-#   15 3 * * * cd ~/tp-formation-suivi && ./backup.sh >> backups/backup.log 2>&1
+#   15 3 * * * cd ~/tp-formation-suivi && ./backup.sh >> backup.log 2>&1
 # Garde les KEEP dernières sauvegardes (30 par défaut).
 set -eu
 
