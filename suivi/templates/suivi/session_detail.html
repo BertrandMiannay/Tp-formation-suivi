@@ -11,13 +11,11 @@
         <p class="muted" style="margin-bottom:1rem;">
             {% if session.title %}{{ session.title }}{% endif %}
             {% if session.location %} · {{ session.location }}{% endif %}
-            {% for f in session.formations.all %} <a href="{% url 'formation-detail' f.pk %}" class="badge badge-cursus" style="text-decoration:none;">{{ f.name }}</a>{% endfor %}
+            {% for f in session_formations %} <a href="{% url 'formation-detail' f.pk %}" class="badge badge-cursus" style="text-decoration:none;">{{ f.name }}</a>{% endfor %}
         </p>
-        {% if session.instructors.all %}
-        <p class="muted" style="margin-bottom:1rem; font-size:0.9rem;">Encadrants :
-            {% for u in session.instructors.all %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
-        </p>
-        {% endif %}
+        {% with users=session.instructors.all %}{% if users %}
+        <p class="muted" style="margin-bottom:1rem; font-size:0.9rem;">Encadrants : {% include "formation/_user_names.html" %}</p>
+        {% endif %}{% endwith %}
     </div>
     <div class="actions" style="margin-bottom:1rem;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-card').style.display = document.getElementById('edit-card').style.display === 'none' ? '' : 'none'">Modifier</button>
@@ -90,31 +88,7 @@
 </form>
 <div class="card">
     <h2>Ajouter un participant</h2>
-    {% if addable_members %}
-    <form method="post" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem;">
-        {% csrf_token %}
-        <input type="hidden" name="_action" value="add_member">
-        <label style="margin:0;">Élève existant :</label>
-        <select name="member_id" style="width:auto; flex:1; min-width:200px;">
-            {% for m in addable_members %}<option value="{{ m.pk }}">{{ m.last_name }} {{ m.first_name }}</option>{% endfor %}
-        </select>
-        <button type="submit" class="btn btn-secondary">Ajouter (présent)</button>
-    </form>
-    {% endif %}
-    <form method="post" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-        {% csrf_token %}
-        <input type="hidden" name="_action" value="create_student">
-        <label style="margin:0;">Nouvel élève :</label>
-        <input type="text" name="first_name" placeholder="Prénom" required style="width:auto; flex:1; min-width:120px;">
-        <input type="text" name="last_name" placeholder="Nom" required style="width:auto; flex:1; min-width:120px;">
-        {% if session_formations %}
-        <select name="formation_id" style="width:auto;" aria-label="Formation">
-            {% for f in session_formations %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
-            <option value="">Sans inscription</option>
-        </select>
-        {% endif %}
-        <button type="submit" class="btn btn-secondary">Créer (présent)</button>
-    </form>
+    {% include "formation/_add_student_forms.html" with existing_action="add_member" existing_label="Ajouter (présent)" create_label="Créer (présent)" formations=session_formations %}
     <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">L'élève est créé sans compte : l'email et l'invitation pourront être ajoutés plus tard depuis sa fiche.</p>
 </div>
 

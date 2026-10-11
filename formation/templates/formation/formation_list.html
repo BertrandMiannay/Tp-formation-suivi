@@ -17,9 +17,9 @@
         <span class="badge badge-cursus">{{ formation.cursus.name }}</span>
         <span class="muted" style="display:block; font-size:0.85rem; margin-top:0.25rem;">
             {% if formation.start_date %}du {{ formation.start_date|date:"d/m/Y" }}{% endif %}{% if formation.end_date %} au {{ formation.end_date|date:"d/m/Y" }}{% endif %}
-            {% if formation.managers.all %} · Responsable{{ formation.managers.all|length|pluralize }} :
-                {% for u in formation.managers.all %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
-            {% endif %}
+            {% with users=formation.managers.all %}{% if users %} · Responsable{{ users|length|pluralize }} :
+                {% include "formation/_user_names.html" %}
+            {% endif %}{% endwith %}
         </span>
     </span>
     <span class="muted">{{ formation.student_count }} élève{{ formation.student_count|pluralize }}</span>

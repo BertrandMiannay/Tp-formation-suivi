@@ -2,7 +2,6 @@ import json
 import logging
 from urllib.parse import quote
 
-from django import forms
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -10,6 +9,7 @@ from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from formation.forms import FormationForm, QuickStudentForm, StudentForm
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
@@ -22,50 +22,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Élèves
 # ---------------------------------------------------------------------------
-
-class StudentForm(forms.ModelForm):
-    email = forms.EmailField(
-        label='Email', required=False,
-        help_text="Facultatif : renseigné, il crée le compte élève (lien d'invitation à transmettre).",
-    )
-    formation = forms.ModelChoiceField(
-        queryset=Formation.objects.none(), required=False, label='Inscrire à la formation',
-    )
-
-    class Meta:
-        model  = Member
-        fields = ['first_name', 'last_name', 'birthdate', 'medical_certificate_date',
-                  'emergency_contact_name', 'emergency_contact_phone']
-        widgets = {
-            'birthdate': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'medical_certificate_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance.pk:
-            self.fields['email'].initial = self.instance.email
-            del self.fields['formation']  # inscriptions gérées depuis la fiche
-        else:
-            self.fields['formation'].queryset = Formation.objects.filter(status=Formation.Status.ACTIVE)
-
-    def clean_email(self):
-        email = self.cleaned_data['email'].strip().lower()
-        if not email:
-            if self.instance.user_id:
-                raise forms.ValidationError("L'élève a un compte : son email ne peut pas être retiré.")
-            return ''
-        User = get_user_model()
-        others = User.objects.filter(email__iexact=email)
-        if self.instance.user_id:
-            others = others.exclude(pk=self.instance.user_id)
-        owner = others.filter(student_profile__isnull=False).first()
-        if owner:
-            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre élève.")
-        if self.instance.user_id and others.exists():
-            raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
-        return email
-
 
 def attach_account(member, email):
     """Rattache un compte à l'élève : compte existant sans fiche (ex. encadrant qui suit une formation)
@@ -175,40 +131,6 @@ def evaluation(request, pk):
 # Formations et inscriptions
 # ---------------------------------------------------------------------------
 
-class FormationForm(forms.ModelForm):
-    class Meta:
-        model  = Formation
-        fields = ['name', 'cursus', 'start_date', 'end_date', 'managers']
-        widgets = {
-            'start_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'end_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'managers': forms.CheckboxSelectMultiple,
-        }
-
-    def __init__(self, *args, **kwargs):
-        from suivi.forms import staff_users
-        super().__init__(*args, **kwargs)
-        cursus_qs = Cursus.objects.filter(status=Cursus.Status.ACTIVE)
-        if self.instance.pk:
-            cursus_qs = cursus_qs | Cursus.objects.filter(pk=self.instance.cursus_id)
-        self.fields['cursus'].queryset = cursus_qs.distinct().order_by('name')
-        self.fields['managers'].queryset = staff_users()
-        self.fields['managers'].label_from_instance = lambda u: u.get_full_name() or u.username
-
-    def clean(self):
-        cleaned = super().clean()
-        start, end = cleaned.get('start_date'), cleaned.get('end_date')
-        if start and end and end < start:
-            self.add_error('end_date', "La fin doit être postérieure au début.")
-        return cleaned
-
-
-class QuickStudentForm(forms.Form):
-    """Création rapide d'un élève (sans compte) depuis une formation ou une séance."""
-    first_name = forms.CharField(label='Prénom', max_length=150)
-    last_name  = forms.CharField(label='Nom', max_length=150)
-
-
 @club_staff_required
 def formation_list(request):
     formations = Formation.objects.select_related('cursus').prefetch_related('managers').annotate(
@@ -234,7 +156,7 @@ def formation_create(request):
 
 @club_staff_required
 def formation_detail(request, pk):
-    formation = get_object_or_404(Formation.objects.select_related('cursus'), pk=pk)
+    formation = get_object_or_404(Formation.objects.select_related('cursus').prefetch_related('managers'), pk=pk)
     edit_form = FormationForm(instance=formation) if request.user.is_administrator else None
     quick_form = QuickStudentForm()
     anchor = reverse('formation-detail', args=[pk]) + '#eleves'
@@ -252,9 +174,7 @@ def formation_detail(request, pk):
         elif action == 'create_student':
             quick_form = QuickStudentForm(request.POST)
             if quick_form.is_valid():
-                with transaction.atomic():
-                    member = Member.objects.create(**quick_form.cleaned_data)
-                    Enrollment.objects.create(member=member, formation=formation)
+                member = quick_form.save(formation=formation)
                 logger.info("STUDENT_CREATE pk=%s formation=%s by=%s", member.pk, formation.pk, request.user.username)
                 messages.success(request, f"Élève {member} créé et inscrit.")
                 return redirect(anchor)

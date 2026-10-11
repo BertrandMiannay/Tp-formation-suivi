@@ -1,31 +1,12 @@
 from django import forms
-from django.contrib.auth import get_user_model
-from django.db.models import Q
 
 from formation.models import Formation, Skill
-from userManagement.models import STAFF_ROLES
+from userManagement.forms import StaffChoiceField
 from .models import Exercise, StudentNote, TrainingSession
 
 
-def staff_users():
-    return (
-        get_user_model().objects
-        .filter(is_active=True)
-        .filter(Q(is_superuser=True) | Q(groups__name__in=STAFF_ROLES))
-        .distinct()
-        .order_by('first_name', 'last_name', 'username')
-    )
-
-
-class StaffChoiceField(forms.ModelMultipleChoiceField):
-    def label_from_instance(self, obj):
-        return obj.get_full_name() or obj.username
-
-
 class TrainingSessionForm(forms.ModelForm):
-    instructors = StaffChoiceField(
-        queryset=None, required=False, widget=forms.CheckboxSelectMultiple, label='Encadrants',
-    )
+    instructors = StaffChoiceField(label='Encadrants')
 
     class Meta:
         model  = TrainingSession
@@ -45,11 +26,10 @@ class TrainingSessionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        formation_qs = Formation.objects.filter(status=Formation.Status.ACTIVE)
+        formation_qs = Formation.objects.active()
         if self.instance.pk:
             formation_qs = formation_qs | self.instance.formations.all()
         self.fields['formations'].queryset = formation_qs.distinct().order_by('name')
-        self.fields['instructors'].queryset = staff_users()
 
 
 class ExerciseForm(forms.ModelForm):

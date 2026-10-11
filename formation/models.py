@@ -61,6 +61,11 @@ class Skill(models.Model):
         return self.name
 
 
+class FormationQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(status=Formation.Status.ACTIVE)
+
+
 class Formation(models.Model):
     """Formation suivie par un groupe d'élèves (ex. « N2 promo 2026 ») : instance d'un cursus,
     indépendante des saisons."""
@@ -76,6 +81,8 @@ class Formation(models.Model):
     managers   = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='managed_formations',
                                         verbose_name='Responsables')
     status     = models.CharField('Statut', max_length=20, choices=Status.choices, default=Status.ACTIVE)
+
+    objects = FormationQuerySet.as_manager()
 
     class Meta:
         verbose_name        = 'Formation'

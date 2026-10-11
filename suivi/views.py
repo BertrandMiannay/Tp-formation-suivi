@@ -3,14 +3,13 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db import models
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation
-from formation.views import QuickStudentForm
+from formation.forms import QuickStudentForm
 from userManagement.views import club_staff_required, invite_url_for
 from .forms import ExerciseForm, StudentNoteForm, TrainingSessionForm
 from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
@@ -38,7 +37,7 @@ def _students(formation_id=None):
 
 def _formation_filter(request):
     """Filtre ?formation= des listes : (formations proposées, id choisi ou None)."""
-    formation_list = Formation.objects.filter(status=Formation.Status.ACTIVE).order_by('name')
+    formation_list = Formation.objects.active().order_by('name')
     value = request.GET.get('formation', '')
     return formation_list, int(value) if value.isdigit() else None
 
@@ -56,14 +55,13 @@ def _skills_progress(member):
     """Structure formation → catégories → compétences du cursus, avec statut, nb de séances où
     l'élève a travaillé la compétence et dernière évaluation. Le statut d'une compétence est propre
     à l'élève : un cursus suivi dans plusieurs formations n'est affiché qu'une fois (la plus récente)."""
-    formations, seen = [], set()
+    by_cursus = {}
     for enrollment in (
         member.enrollments.select_related('formation__cursus')
         .prefetch_related('formation__cursus__categories__skills')
     ):
-        if enrollment.formation.cursus_id not in seen:
-            seen.add(enrollment.formation.cursus_id)
-            formations.append(enrollment)
+        by_cursus.setdefault(enrollment.formation.cursus_id, enrollment)
+    formations = list(by_cursus.values())
     skill_ids = [
         s.pk for e in formations for c in e.formation.cursus.categories.all() for s in c.skills.all()
     ]
@@ -113,11 +111,14 @@ def _skills_progress(member):
     return result
 
 
-def _candidate_skills(session, member):
+def _session_cursus_ids(session):
+    return set(session.formations.values_list('cursus_id', flat=True))
+
+
+def _candidate_skills(session_ids, member):
     """Compétences proposables pour un élève lors d'une séance : celles des cursus de ses formations,
-    restreintes aux cursus des formations de la séance quand ils recoupent les siens."""
+    restreintes aux cursus des formations de la séance (`session_ids`) quand ils recoupent les siens."""
     member_ids = member.cursus_ids()
-    session_ids = set(session.formations.values_list('cursus_id', flat=True))
     cursus_ids = (member_ids & session_ids) or member_ids
     return list(
         Skill.objects.filter(category__cursus__in=cursus_ids)
@@ -264,9 +265,7 @@ def session_detail(request, pk):
             formation = session.formations.filter(pk=request.POST.get('formation_id')).first()
             if quick_form.is_valid():
                 with transaction.atomic():
-                    member = Member.objects.create(**quick_form.cleaned_data)
-                    if formation:
-                        Enrollment.objects.create(member=member, formation=formation)
+                    member = quick_form.save(formation=formation)
                     Attendance.objects.create(session=session, member=member, status=Attendance.Status.PRESENT)
                 logger.info("STUDENT_CREATE pk=%s session=%s by=%s", member.pk, session.pk, request.user.username)
                 messages.success(request, f"Élève {member} créé et noté présent.")
@@ -277,7 +276,7 @@ def session_detail(request, pk):
         elif action == 'worked_skills':
             member = get_object_or_404(Member, pk=request.POST.get('member_id'))
             valid = set(MemberSkill.SkillStatus.values)
-            candidates = _candidate_skills(session, member)
+            candidates = _candidate_skills(_session_cursus_ids(session), member)
             existing = {ws.skill_id: ws for ws in WorkedSkill.objects.filter(session=session, member=member)}
             current = {
                 ms.skill_id: ms.status
@@ -340,6 +339,8 @@ def session_detail(request, pk):
     roster_rows = [{'member': m, 'attendance': attendance_map.get(m.pk)} for m in roster]
     stats = _attendance_stats(attendance_map.values())
 
+    session_formations = list(session.formations.all())
+    session_cursus_ids = {f.cursus_id for f in session_formations}
     worked_by_member = {}
     for ws in session.worked_skills.select_related('author'):
         worked_by_member.setdefault(ws.member_id, {})[ws.skill_id] = ws
@@ -355,7 +356,7 @@ def session_detail(request, pk):
             'present': is_present,
             'worked_count': len(worked),
             'acquired_count': sum(1 for ws in worked.values() if ws.status == MemberSkill.SkillStatus.ACQUIRED),
-            'cursus': _skill_tree(m, _candidate_skills(session, m), worked),
+            'cursus': _skill_tree(m, _candidate_skills(session_cursus_ids, m), worked),
         })
 
     roster_ids = [m.pk for m in roster]
@@ -372,7 +373,7 @@ def session_detail(request, pk):
         'visibility_choices': StudentNote.Visibility.choices,
         'session_notes': session.student_notes.select_related('member', 'author'),
         'addable_members': addable_members,
-        'session_formations': session.formations.all(),
+        'session_formations': session_formations,
         'active_tab': 'seances',
     })
 
@@ -397,14 +398,13 @@ def attendance_overview(request):
     formation_list, formation_id = _formation_filter(request)
     sessions = TrainingSession.objects.filter(season=season).order_by('date', 'pk')
     if formation_id:
-        sessions = sessions.filter(formations=formation_id)
-    sessions = list(sessions)
-    if formation_id:
+        sessions = list(sessions.filter(formations=formation_id))
         students = _students(formation_id)
     else:
+        sessions = list(sessions)
         # Élèves en formation, plus ceux venus à une séance de la saison sans y être inscrits.
         attended = Attendance.objects.filter(session__in=sessions).values('member_id')
-        students = Member.objects.filter(Q(pk__in=_students().values('pk')) | Q(pk__in=attended))
+        students = Member.objects.filter(Q(pk__in=_students()) | Q(pk__in=attended))
     students = list(students.order_by('last_name', 'first_name'))
     att_map = {
         (a.member_id, a.session_id): a
@@ -438,7 +438,7 @@ def student_list(request):
     formation_list, formation_id = _formation_filter(request)
     show_all = request.GET.get('formation') == 'all'
     students = Member.objects.order_by('last_name', 'first_name') if show_all else _students(formation_id)
-    students = students.prefetch_related(models.Prefetch(
+    students = students.prefetch_related(Prefetch(
         'enrollments', queryset=Enrollment.objects.select_related('formation').filter(status=Enrollment.Status.ACTIVE),
         to_attr='active_enrollments',
     ))
@@ -526,7 +526,7 @@ def student_detail(request, pk):
     return render(request, 'suivi/student_detail.html', {
         'member': member,
         'enrollments': enrollments,
-        'enrollable_formations': Formation.objects.filter(status=Formation.Status.ACTIVE)
+        'enrollable_formations': Formation.objects.active()
                                  .exclude(enrollments__member=member).order_by('name'),
         'attendances': attendances,
         'stats': _attendance_stats(attendances),
@@ -559,7 +559,6 @@ def my_tracking(request):
         attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date')))
         sheets.append({
             'member': member,
-            'enrollments': member.enrollments.select_related('formation__cursus'),
             'attendances': attendances,
             'stats': _attendance_stats(attendances),
             'formations': _skills_progress(member),
