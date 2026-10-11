@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 
-from formation.models import Cursus, Skill
+from formation.models import Formation, Skill
 from userManagement.models import STAFF_ROLES
 from .models import Exercise, StudentNote, TrainingSession
 
@@ -29,26 +29,26 @@ class TrainingSessionForm(forms.ModelForm):
 
     class Meta:
         model  = TrainingSession
-        fields = ['date', 'title', 'location', 'cursus', 'instructors', 'notes']
+        fields = ['date', 'title', 'location', 'formations', 'instructors', 'notes']
         labels = {
             'date': 'Date',
             'title': 'Thème',
             'location': 'Lieu',
-            'cursus': 'Niveaux préparés',
+            'formations': 'Formations',
             'notes': 'Déroulé / remarques (équipe encadrante)',
         }
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-            'cursus': forms.CheckboxSelectMultiple,
+            'formations': forms.CheckboxSelectMultiple,
             'notes': forms.Textarea(attrs={'rows': 4}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        cursus_qs = Cursus.objects.filter(status=Cursus.Status.ACTIVE)
+        formation_qs = Formation.objects.filter(status=Formation.Status.ACTIVE)
         if self.instance.pk:
-            cursus_qs = cursus_qs | self.instance.cursus.all()
-        self.fields['cursus'].queryset = cursus_qs.distinct().order_by('name')
+            formation_qs = formation_qs | self.instance.formations.all()
+        self.fields['formations'].queryset = formation_qs.distinct().order_by('name')
         self.fields['instructors'].queryset = staff_users()
 
 
@@ -73,7 +73,7 @@ class ExerciseForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if member is not None:
             self.fields['skill'].queryset = (
-                Skill.objects.filter(category__cursus__in=member.formations.all())
+                Skill.objects.filter(category__cursus__in=member.cursus_ids())
                 .select_related('category__cursus')
                 .order_by('category__cursus__name', 'category__order', 'order')
             )

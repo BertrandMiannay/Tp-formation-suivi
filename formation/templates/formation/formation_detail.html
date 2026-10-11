@@ -1,0 +1,123 @@
+{% extends "suivi/base.html" %}
+
+{% block title %}{{ formation.name }}{% endblock %}
+
+{% block suivi_content %}
+<a href="{% url 'formation-list' %}" class="btn btn-secondary" style="margin-bottom:1.5rem;">← Formations</a>
+
+<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+    <div>
+        <h1 style="margin-bottom:0.25rem;">{{ formation.name }}
+            {% if formation.status == 'closed' %}<span class="badge badge-none">{{ formation.get_status_display }}</span>{% endif %}
+        </h1>
+        <p class="muted" style="margin-bottom:1rem;">
+            Cursus {{ formation.cursus.name }} ({{ skill_total }} compétence{{ skill_total|pluralize }})
+            {% if formation.start_date %} · du {{ formation.start_date|date:"d/m/Y" }}{% endif %}{% if formation.end_date %} au {{ formation.end_date|date:"d/m/Y" }}{% endif %}
+            {% if formation.managers.all %}<br>Responsable{{ formation.managers.all|length|pluralize }} :
+                {% for u in formation.managers.all %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+        </p>
+    </div>
+    {% if edit_form %}
+    <div class="actions" style="margin-bottom:1rem;">
+        <button type="button" class="btn btn-secondary" onclick="const c = document.getElementById('edit-card'); c.style.display = c.style.display === 'none' ? '' : 'none'">Modifier</button>
+        <form method="post" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="_action" value="toggle_status">
+            <button type="submit" class="btn btn-secondary">{% if formation.status == 'active' %}Clôturer{% else %}Rouvrir{% endif %}</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+{% if edit_form %}
+<form method="post" class="card" id="edit-card" {% if not edit_form.errors %}style="display:none;"{% endif %}>
+    {% csrf_token %}
+    <input type="hidden" name="_action" value="edit">
+    <h2>Modifier la formation</h2>
+    {% with form=edit_form %}{% include "formation/_formation_fields.html" %}{% endwith %}
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Enregistrer</button></div>
+</form>
+{% endif %}
+
+<div class="card" id="eleves">
+    <h2>Élèves inscrits ({{ rows|length }})</h2>
+    {% if rows %}
+    <table class="list-table">
+        <thead><tr><th>Élève</th><th>Compte</th><th>Compétences acquises</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+        {% with e=row.enrollment %}
+            <tr>
+                <td data-label="Élève"><a href="{% url 'suivi-student-detail' e.member.pk %}" style="color:#1a1a2e; font-weight:500;">{{ e.member.last_name }} {{ e.member.first_name }}</a></td>
+                <td data-label="Compte" class="muted" style="font-size:0.85rem;">{% if e.member.user.is_active %}actif{% elif e.member.user %}invitation en attente{% else %}sans compte{% endif %}</td>
+                <td data-label="Acquises">
+                    <span style="display:flex; align-items:center; gap:0.5rem;">
+                        <span class="progress" style="width:100px;"><div style="width:{{ row.pct }}%;"></div></span>
+                        <span class="muted" style="font-size:0.85rem;">{{ row.acquired }}/{{ skill_total }}</span>
+                    </span>
+                </td>
+                <td data-label="Statut">
+                    <form method="post" class="inline-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="_action" value="set_status">
+                        <input type="hidden" name="enrollment_pk" value="{{ e.pk }}">
+                        <select name="status" onchange="this.form.submit()" style="width:auto; font-size:0.85rem; padding:0.25rem;" aria-label="Statut">
+                            {% for value, label in status_choices %}<option value="{{ value }}" {% if e.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </form>
+                </td>
+                <td>
+                    <form method="post" class="inline-form" onsubmit="return confirm('Désinscrire {{ e.member|escapejs }} ? Ses évaluations sont conservées.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="_action" value="unenroll">
+                        <input type="hidden" name="enrollment_pk" value="{{ e.pk }}">
+                        <button type="submit" class="link-btn">Désinscrire</button>
+                    </form>
+                </td>
+            </tr>
+        {% endwith %}
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Aucun élève inscrit.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Inscrire des élèves</h2>
+    {% if addable_members %}
+    <form method="post" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem;">
+        {% csrf_token %}
+        <input type="hidden" name="_action" value="enroll">
+        <label style="margin:0;">Élève existant :</label>
+        <select name="member_id" style="width:auto; flex:1; min-width:200px;">
+            {% for m in addable_members %}<option value="{{ m.pk }}">{{ m.last_name }} {{ m.first_name }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">Inscrire</button>
+    </form>
+    {% endif %}
+    <form method="post" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        {% csrf_token %}
+        <input type="hidden" name="_action" value="create_student">
+        <label style="margin:0;">Nouvel élève :</label>
+        <input type="text" name="first_name" placeholder="Prénom" required value="{{ quick_form.first_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
+        <input type="text" name="last_name" placeholder="Nom" required value="{{ quick_form.last_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
+        <button type="submit" class="btn btn-secondary">Créer et inscrire</button>
+    </form>
+    <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">
+        Création rapide sans compte. Pour une fiche complète (email, certificat médical…) :
+        <a href="{% url 'eleve-create' %}?formation={{ formation.pk }}" style="color:#1a1a2e;">formulaire élève</a>.
+    </p>
+</div>
+
+{% if sessions %}
+<div class="card">
+    <h2>Dernières séances</h2>
+    {% for s in sessions %}
+    <div style="padding:0.3rem 0; border-top:1px solid #eee;"><a href="{% url 'suivi-session-detail' s.pk %}" style="color:#1a1a2e;">{{ s }}</a></div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

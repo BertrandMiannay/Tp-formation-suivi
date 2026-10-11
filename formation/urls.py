@@ -7,11 +7,18 @@ urlpatterns = [
     path('', views.season_gestion, name='saison-gestion'),
     path('set-current/<int:pk>/', views.set_current_season, name='saison-set-current'),
     path('delete/<int:pk>/', views.delete_season, name='saison-delete'),
-    path('formations/', views.formation_list, name='saison-formation'),
-    path('formations/creer/', views.cursus_create, name='saison-cursus-creer'),
-    path('formations/importer/', views.cursus_import_json, name='saison-cursus-importer'),
-    path('formations/<int:pk>/', views.cursus_detail, name='saison-cursus-detail'),
-    path('formations/<int:pk>/archiver/', views.cursus_archive, name='saison-cursus-archiver'),
+    path('cursus/', views.cursus_list, name='saison-cursus'),
+    path('cursus/creer/', views.cursus_create, name='saison-cursus-creer'),
+    path('cursus/importer/', views.cursus_import_json, name='saison-cursus-importer'),
+    path('cursus/<int:pk>/', views.cursus_detail, name='saison-cursus-detail'),
+    path('cursus/<int:pk>/archiver/', views.cursus_archive, name='saison-cursus-archiver'),
+]
+
+# Formations et inscriptions : /formations/
+formation_urlpatterns = [
+    path('', views.formation_list, name='formation-list'),
+    path('creer/', views.formation_create, name='formation-create'),
+    path('<int:pk>/', views.formation_detail, name='formation-detail'),
 ]
 
 # Élèves : /eleves/

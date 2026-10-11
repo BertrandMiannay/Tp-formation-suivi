@@ -2,14 +2,8 @@
 set -e
 
 # Applique les migrations à chaque démarrage (idempotent) : une nouvelle image
-# met donc la base à jour automatiquement.
+# met donc la base à jour automatiquement. Sur une base neuve, la migration
+# userManagement 0002 crée le premier administrateur (DJANGO_SUPERUSER_*).
 python manage.py migrate --noinput
-
-# Création optionnelle du premier administrateur (ignorée s'il existe déjà).
-if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
-    python manage.py createsuperuser --noinput 2>/dev/null \
-        && echo "Superutilisateur $DJANGO_SUPERUSER_USERNAME créé." \
-        || echo "Superutilisateur $DJANGO_SUPERUSER_USERNAME déjà présent."
-fi
 
 exec "$@"

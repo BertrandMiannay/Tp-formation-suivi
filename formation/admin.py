@@ -1,18 +1,31 @@
 from django.contrib import admin
 
-from .models import Season, Member, Cursus, CursusCategory, Skill, MemberSkill, SkillEvaluation
+from .models import Season, Member, Cursus, CursusCategory, Skill, MemberSkill, SkillEvaluation, Formation, Enrollment
 
 
 admin.site.register(Season)
+
+
+class EnrollmentInline(admin.TabularInline):
+    model = Enrollment
+    extra = 0
+    autocomplete_fields = ['member']
 
 
 @admin.register(Member)
 class MemberAdmin(admin.ModelAdmin):
     list_display      = ('last_name', 'first_name', 'user', 'medical_certificate_date')
     search_fields     = ('first_name', 'last_name', 'user__email')
-    list_filter       = ('seasons', 'formations')
-    filter_horizontal = ('formations', 'seasons')
+    list_filter       = ('enrollments__formation',)
     autocomplete_fields = ['user']
+
+
+@admin.register(Formation)
+class FormationAdmin(admin.ModelAdmin):
+    list_display      = ('name', 'cursus', 'start_date', 'end_date', 'status')
+    list_filter       = ('status', 'cursus')
+    filter_horizontal = ('managers',)
+    inlines           = [EnrollmentInline]
 
 
 class SkillInline(admin.TabularInline):

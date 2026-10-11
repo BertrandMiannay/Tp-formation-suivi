@@ -1,6 +1,10 @@
+import importlib
+from unittest import mock
+
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import Role
@@ -50,3 +54,32 @@ class RoleTests(TestCase):
         user = get_user_model().objects.get(email='new@example.com')
         self.assertFalse(user.is_active)
         self.assertEqual(user.role, Role.INSTRUCTOR)
+
+
+
+create_initial_admin = importlib.import_module(
+    'userManagement.migrations.0002_create_initial_admin').create_initial_admin
+
+
+@override_settings(TESTING=False)
+class InitialAdminMigrationTests(TestCase):
+    def run_migration(self, **env):
+        with mock.patch.dict('os.environ', env):
+            create_initial_admin(django_apps, None)
+
+    def test_creates_admin_from_env(self):
+        self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='s3cret')
+        user = get_user_model().objects.get(username='chef')
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('s3cret'))
+        self.assertTrue(user.groups.filter(name=Role.ADMIN).exists())
+
+    def test_existing_admin_keeps_password(self):
+        self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='s3cret')
+        self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='autre')
+        self.assertTrue(get_user_model().objects.get(username='chef').check_password('s3cret'))
+
+    def test_noop_without_username_or_password(self):
+        self.run_migration(DJANGO_SUPERUSER_USERNAME='', DJANGO_SUPERUSER_PASSWORD='s3cret')
+        self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='')
+        self.assertFalse(get_user_model().objects.exists())

@@ -6,12 +6,12 @@ from django.test import TestCase
 from django.urls import reverse
 
 from formation.models import (
-    Cursus, CursusCategory, Member, MemberSkill, Season, Skill, SkillEvaluation,
+    Cursus, CursusCategory, Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation,
 )
 from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
 
 
-class SuiviTestCase(TestCase):
+class SuiviFixtures(TestCase):
     @classmethod
     def setUpTestData(cls):
         User = get_user_model()
@@ -30,28 +30,29 @@ class SuiviTestCase(TestCase):
         cls.alice = Member.objects.create(user=cls.student_user, first_name='Alice', last_name='Martin')
         cls.bob = Member.objects.create(first_name='Bob', last_name='Durand')
         cls.carol = Member.objects.create(first_name='Carol', last_name='Petit')
-        cls.alice.formations.add(cls.cursus)
-        cls.bob.formations.add(cls.cursus)
-        cls.carol.formations.add(other_cursus)
-        for m in [cls.alice, cls.bob, cls.carol]:
-            m.seasons.add(cls.season)
-        # Élève d'une autre saison : jamais attendu
+        cls.formation = Formation.objects.create(name='N1 promo 2027', cursus=cls.cursus)
+        other_formation = Formation.objects.create(name='N2 promo 2027', cursus=other_cursus)
+        for m in [cls.alice, cls.bob]:
+            Enrollment.objects.create(member=m, formation=cls.formation)
+        Enrollment.objects.create(member=cls.carol, formation=other_formation)
+        # Élève ayant abandonné : jamais attendu
         old = Member.objects.create(first_name='Dan', last_name='Ancien')
-        old.formations.add(cls.cursus)
-        old.seasons.add(Season.objects.create(label='2025-2026'))
+        Enrollment.objects.create(member=old, formation=cls.formation, status=Enrollment.Status.DROPPED)
 
     def setUp(self):
         self.client.force_login(self.instructor)
 
     def _create_session(self):
         resp = self.client.post(reverse('suivi-session-create'), {
-            'date': '2026-10-07', 'title': 'Piscine', 'location': 'Bassin', 'cursus': [self.cursus.pk],
+            'date': '2026-10-07', 'title': 'Piscine', 'location': 'Bassin', 'formations': [self.formation.pk],
             'instructors': [self.instructor.pk], 'notes': '',
         })
         session = TrainingSession.objects.get()
         self.assertRedirects(resp, reverse('suivi-session-detail', args=[session.pk]))
         return session
 
+
+class SuiviTestCase(SuiviFixtures):
     def test_session_create_and_roster(self):
         session = self._create_session()
         self.assertEqual(session.season, self.season)
@@ -71,7 +72,7 @@ class SuiviTestCase(TestCase):
         self.assertEqual(Attendance.objects.get(member=self.alice).status, 'present')
         self.assertEqual(Attendance.objects.get(member=self.bob).comment, 'malade')
 
-        # Un participant hors niveau peut être ajouté
+        # Un participant d'une autre formation peut être ajouté
         self.client.post(url, {'_action': 'add_member', 'member_id': self.carol.pk})
         self.assertIn(self.carol, session.roster())
 
@@ -192,11 +193,12 @@ class SuiviTestCase(TestCase):
     def test_create_student_creates_invited_account(self):
         resp = self.client.post(reverse('eleve-create'), {
             'first_name': 'Eve', 'last_name': 'Nouvelle', 'email': 'Eve@Example.com',
-            'formations': [self.cursus.pk], 'seasons': [self.season.pk],
+            'formation': self.formation.pk,
         })
         eve = Member.objects.get(first_name='Eve')
         self.assertRedirects(resp, reverse('suivi-student-detail', args=[eve.pk]))
         self.assertEqual(eve.email, 'eve@example.com')
+        self.assertTrue(Enrollment.objects.filter(member=eve, formation=self.formation).exists())
         self.assertFalse(eve.user.is_active)
         self.assertTrue(eve.user.groups.filter(name='student').exists())
 
@@ -209,19 +211,18 @@ class SuiviTestCase(TestCase):
         self.client.post(accept_url, {'username': 'eve', 'password1': 'S3cret-pass!', 'password2': 'S3cret-pass!'})
         resp = self.client.get(reverse('suivi-mine'))
         self.assertContains(resp, 'Mon suivi')
-        self.assertContains(resp, 'Niveau 1')
+        self.assertContains(resp, 'N1 promo 2027')
 
     def test_student_email_must_be_unique_among_students(self):
         resp = self.client.post(reverse('eleve-create'), {
-            'first_name': 'X', 'last_name': 'Y', 'email': 'alice@example.com', 'seasons': [self.season.pk],
+            'first_name': 'X', 'last_name': 'Y', 'email': 'alice@example.com',
         })
         self.assertContains(resp, 'déjà utilisée par un autre élève')
         self.assertFalse(Member.objects.filter(first_name='X').exists())
 
     def test_edit_student_and_renew_invite(self):
         url = reverse('eleve-edit', args=[self.bob.pk])
-        self.client.post(url, {'first_name': 'Bob', 'last_name': 'Durand', 'email': 'bob@example.com',
-                               'formations': [self.cursus.pk], 'seasons': [self.season.pk]})
+        self.client.post(url, {'first_name': 'Bob', 'last_name': 'Durand', 'email': 'bob@example.com'})
         self.bob.refresh_from_db()
         self.assertEqual(self.bob.email, 'bob@example.com')
         token = self.bob.user.invite_token
@@ -239,7 +240,8 @@ class SuiviTestCase(TestCase):
         admin.groups.add(Group.objects.get(name='admin'))
         self.client.force_login(admin)
         for name, args in [
-            ('home', []), ('saison-gestion', []), ('saison-formation', []), ('saison-cursus-creer', []),
+            ('home', []), ('saison-gestion', []), ('saison-cursus', []), ('saison-cursus-creer', []),
+            ('formation-list', []), ('formation-create', []), ('formation-detail', [self.formation.pk]),
             ('saison-cursus-importer', []), ('saison-cursus-detail', [self.cursus.pk]),
             ('eleve-create', []), ('eleve-edit', [self.alice.pk]), ('suivi-sessions', []),
         ]:
@@ -251,8 +253,9 @@ class SuiviTestCase(TestCase):
     def test_students_cannot_access_management_or_evaluation(self):
         self.client.force_login(self.student_user)
         for name, args in [
-            ('saison-gestion', []), ('saison-formation', []), ('saison-cursus-detail', [self.cursus.pk]),
+            ('saison-gestion', []), ('saison-cursus', []), ('saison-cursus-detail', [self.cursus.pk]),
             ('eleve-create', []), ('eleve-edit', [self.alice.pk]), ('eleve-evaluation', [self.alice.pk]),
+            ('formation-list', []), ('formation-create', []), ('formation-detail', [self.formation.pk]),
             ('eleve-evaluation-save', [self.alice.pk, self.cursus.pk]),
             ('eleve-evaluation-export', [self.alice.pk, self.cursus.pk]),
         ]:
@@ -260,3 +263,102 @@ class SuiviTestCase(TestCase):
                 resp = method(reverse(name, args=args))
                 self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False, msg_prefix=name)
         self.assertFalse(MemberSkill.objects.exists())
+
+
+class FormationWorkflowTestCase(SuiviFixtures):
+    """Formation → inscriptions → séance → validation, avec des élèves sans compte."""
+
+    def _admin(self):
+        admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        return admin
+
+    def test_admin_creates_formation_instructor_cannot(self):
+        data = {'name': 'N1 promo 2028', 'cursus': self.cursus.pk, 'start_date': '2027-09-01',
+                'end_date': '2028-06-30', 'managers': [self.instructor.pk]}
+        self.client.post(reverse('formation-create'), data)
+        self.assertFalse(Formation.objects.filter(name='N1 promo 2028').exists())
+
+        self.client.force_login(self._admin())
+        resp = self.client.post(reverse('formation-create'), data)
+        formation = Formation.objects.get(name='N1 promo 2028')
+        self.assertRedirects(resp, reverse('formation-detail', args=[formation.pk]))
+        self.assertEqual(list(formation.managers.all()), [self.instructor])
+
+        resp = self.client.post(reverse('formation-create'), {**data, 'name': 'X', 'end_date': '2027-01-01'})
+        self.assertContains(resp, 'postérieure au début')
+
+    def test_enrollments_from_formation_page(self):
+        url = reverse('formation-detail', args=[self.formation.pk])
+        self.client.post(url, {'_action': 'create_student', 'first_name': 'Fred', 'last_name': 'Sanscompte'})
+        fred = Member.objects.get(first_name='Fred')
+        self.assertIsNone(fred.user)
+        self.assertTrue(Enrollment.objects.filter(member=fred, formation=self.formation).exists())
+
+        self.client.post(url, {'_action': 'enroll', 'member_id': self.carol.pk})
+        enrollment = Enrollment.objects.get(member=self.carol, formation=self.formation)
+        self.client.post(url, {'_action': 'set_status', 'enrollment_pk': enrollment.pk, 'status': 'completed'})
+        enrollment.refresh_from_db()
+        self.assertEqual(enrollment.status, 'completed')
+
+        resp = self.client.get(url)
+        self.assertContains(resp, 'Sanscompte Fred')
+        self.assertContains(resp, 'sans compte')
+
+        self.client.post(url, {'_action': 'unenroll', 'enrollment_pk': enrollment.pk})
+        self.assertFalse(Enrollment.objects.filter(pk=enrollment.pk).exists())
+
+        # Un encadrant ne peut pas modifier ni clôturer la formation
+        self.client.post(url, {'_action': 'toggle_status'})
+        self.formation.refresh_from_db()
+        self.assertEqual(self.formation.status, 'active')
+
+    def test_student_without_account_in_session(self):
+        session = self._create_session()
+        url = reverse('suivi-session-detail', args=[session.pk])
+        self.client.post(url, {'_action': 'create_student', 'first_name': 'Gina', 'last_name': 'Nouvelle',
+                               'formation_id': self.formation.pk})
+        gina = Member.objects.get(first_name='Gina')
+        self.assertIsNone(gina.user)
+        self.assertEqual(Attendance.objects.get(member=gina).status, 'present')
+        self.assertIn(gina, session.roster())
+
+        # Ses compétences se valident comme pour les autres élèves
+        self.client.post(url, {'_action': 'worked_skills', 'member_id': gina.pk,
+                               f'ws_{self.skill_a.pk}_status': 'acquired'})
+        self.assertEqual(MemberSkill.objects.get(member=gina, skill=self.skill_a).status, 'acquired')
+
+        # Compte créé plus tard en renseignant l'email
+        self.client.post(reverse('eleve-edit', args=[gina.pk]), {'first_name': 'Gina', 'last_name': 'Nouvelle',
+                                                                 'email': 'gina@example.com'})
+        gina.refresh_from_db()
+        self.assertFalse(gina.user.is_active)
+        self.assertTrue(gina.user.groups.filter(name='student').exists())
+
+    def test_create_student_without_email(self):
+        resp = self.client.post(reverse('eleve-create'), {'first_name': 'Hugo', 'last_name': 'Libre'})
+        hugo = Member.objects.get(first_name='Hugo')
+        self.assertRedirects(resp, reverse('suivi-student-detail', args=[hugo.pk]))
+        self.assertIsNone(hugo.user)
+        self.assertFalse(Enrollment.objects.filter(member=hugo).exists())
+        # Visible dans « Tous les élèves », pas dans « En formation »
+        self.assertNotContains(self.client.get(reverse('suivi-students')), 'Libre Hugo')
+        self.assertContains(self.client.get(reverse('suivi-students') + '?formation=all'), 'Libre Hugo')
+        # Inscription depuis la fiche
+        self.client.post(reverse('suivi-student-detail', args=[hugo.pk]),
+                         {'_action': 'enroll', 'formation_id': self.formation.pk})
+        self.assertTrue(Enrollment.objects.filter(member=hugo, formation=self.formation).exists())
+
+    def test_email_cannot_be_removed_once_account_exists(self):
+        resp = self.client.post(reverse('eleve-edit', args=[self.alice.pk]),
+                                {'first_name': 'Alice', 'last_name': 'Martin', 'email': ''})
+        self.assertContains(resp, 'ne peut pas être retiré')
+
+    def test_student_account_is_read_only(self):
+        self.client.force_login(self.student_user)
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, 'N1 promo 2027')
+        self.assertNotContains(resp, '<form')
+        url = reverse('formation-detail', args=[self.formation.pk])
+        self.client.post(url, {'_action': 'create_student', 'first_name': 'Z', 'last_name': 'Z'})
+        self.assertFalse(Member.objects.filter(first_name='Z').exists())

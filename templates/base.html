@@ -94,12 +94,13 @@
                 <a href="{% url 'suivi-sessions' %}">Séances</a>
                 <a href="{% url 'suivi-attendance' %}">Présences</a>
                 <a href="{% url 'suivi-students' %}">Élèves</a>
+                <a href="{% url 'formation-list' %}">Formations</a>
             {% endif %}
             {% if user.student_profile %}
                 <a href="{% url 'suivi-mine' %}">Mon suivi</a>
             {% endif %}
             {% if user.is_administrator %}
-                <a href="{% url 'saison-gestion' %}">Saisons et formations</a>
+                <a href="{% url 'saison-gestion' %}">Saisons et cursus</a>
                 <a href="/users/">Utilisateurs</a>
             {% endif %}
             <span class="spacer"></span>

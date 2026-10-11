@@ -1,7 +1,9 @@
 {% for cursus in formations %}
 <details class="card" {% if forloop.first %}open{% endif %}>
     <summary style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
-        <strong style="color:#1a1a2e;">{{ cursus.name }}</strong>
+        <span><strong style="color:#1a1a2e;">{{ cursus.name }}</strong>
+            {% if cursus.cursus_name != cursus.name %}<span class="muted" style="font-size:0.85rem;">{{ cursus.cursus_name }}</span>{% endif %}
+            {% if cursus.enrollment.status != 'active' %}<span class="badge badge-enroll-{{ cursus.enrollment.status }}">{{ cursus.enrollment.get_status_display }}</span>{% endif %}</span>
         <span style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem;">
             <span class="badge badge-acquired">{{ cursus.counts.acquired }} acquise{{ cursus.counts.acquired|pluralize }}</span>
             <span class="badge badge-in_progress">{{ cursus.counts.in_progress }} en cours</span>
@@ -28,7 +30,7 @@
     {% endfor %}
 </details>
 {% empty %}
-<p class="muted">Aucune formation associée.</p>
+<p class="muted">Inscrit à aucune formation.</p>
 {% endfor %}
 <style>
 @media (max-width: 640px) {
