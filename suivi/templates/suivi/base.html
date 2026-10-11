@@ -2,9 +2,9 @@
 
 {% block content %}
 <style>
-.suivi-tabs { display:flex; gap:0; margin-bottom:2rem; border-bottom:2px solid #1a1a2e; flex-wrap:wrap; }
-.suivi-tabs a { padding:0.5rem 1.25rem; text-decoration:none; font-size:0.95rem; color:#1a1a2e; }
-.suivi-tabs a.active { background:#1a1a2e; color:white; }
+.view-switch { display:inline-flex; border:1px solid #1a1a2e; border-radius:6px; overflow:hidden; margin-bottom:1.25rem; }
+.view-switch a { padding:0.4rem 1.1rem; text-decoration:none; font-size:0.95rem; color:#1a1a2e; background:white; }
+.view-switch a.active { background:#1a1a2e; color:white; }
 .card { background:white; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); padding:1.25rem; margin-bottom:1.5rem; }
 .card h2 { font-size:1.1rem; color:#1a1a2e; margin-bottom:0.75rem; }
 .muted { color:#6b7280; }
@@ -41,10 +41,10 @@ textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px;
 .radio-group label.att-excused:has(input:checked) { background:#fef3c7; border-color:#d97706; color:#92400e; }
 .errorlist { color:#b91c1c; font-size:0.85rem; list-style:none; }
 /* Barre d'enregistrement collée en bas de l'écran pendant le défilement d'un long formulaire. */
-.sticky-actions { position:sticky; bottom:0; z-index:5; background:white; padding:0.75rem 0; margin-top:0.75rem; border-top:1px solid #eee; }
+.sticky-actions { position:sticky; bottom:var(--tabbar-h, 0px); z-index:5; background:white; padding:0.75rem 0; margin-top:0.75rem; border-top:1px solid #eee; }
 @media (max-width: 640px) {
-    .suivi-tabs { flex-wrap:nowrap; overflow-x:auto; margin-bottom:1rem; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-    .suivi-tabs a { white-space:nowrap; padding:0.6rem 1rem; }
+    .view-switch { display:flex; margin-bottom:1rem; }
+    .view-switch a { flex:1; text-align:center; padding:0.55rem 0.5rem; }
     .card { padding:1rem; margin-bottom:1rem; }
     .stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:0.5rem; margin-bottom:1rem; }
     .stat { min-width:0; padding:0.6rem 0.75rem; }
@@ -56,15 +56,6 @@ textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px;
     .link-btn { font-size:0.95rem; padding:0.35rem 0; }
 }
 </style>
-
-{% if active_tab %}
-<div class="suivi-tabs">
-    <a href="{% url 'suivi-sessions' %}" class="{% if active_tab == 'seances' %}active{% endif %}">Séances</a>
-    <a href="{% url 'suivi-attendance' %}" class="{% if active_tab == 'presences' %}active{% endif %}">Présences</a>
-    <a href="{% url 'suivi-students' %}" class="{% if active_tab == 'eleves' %}active{% endif %}">Élèves</a>
-    <a href="{% url 'formation-list' %}" class="{% if active_tab == 'formations' %}active{% endif %}">Formations</a>
-</div>
-{% endif %}
 
 {% block suivi_content %}{% endblock %}
 {% endblock %}

@@ -1,16 +1,23 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}Suivi formation{% endblock %}</title>
     <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
+    <link rel="icon" href="{% static 'icon.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'apple-touch-icon.png' %}">
+    <meta name="apple-mobile-web-app-title" content="Suivi formation">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; -webkit-text-size-adjust: 100%; }
         nav { background: #1a1a2e; color: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
         nav a { color: #ccc; text-decoration: none; }
-        nav a:hover { color: white; }
+        nav a:hover, nav a.active { color: white; }
+        .nav-links a.active { font-weight: 600; }
         nav .brand { font-weight: bold; font-size: 1.1rem; color: white; white-space: nowrap; }
         nav .spacer { flex: 1; }
         .nav-links { display: flex; align-items: center; gap: 1.5rem; flex: 1; }
@@ -44,6 +51,8 @@
         .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
         .actions select { width: auto; }
         .show-sm { display: none; }
+        /* Barre d'onglets en bas d'écran (encadrants, mobile uniquement). */
+        .tabbar { display: none; }
 
         @media (max-width: 640px) {
             main { margin: 1rem auto; padding: 0 0.75rem; }
@@ -65,6 +74,13 @@
             .page-header .actions > * { flex: 1 1 auto; }
             .page-header .actions select, .page-header .actions form { width: 100%; }
             .hide-sm { display: none !important; }
+            body.has-tabbar { --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom)); padding-bottom: var(--tabbar-h); }
+            .has-tabbar .nav-toggle, .has-tabbar .nav-main { display: none; }
+            .has-tabbar nav.open .nav-links { position: fixed; left: 0; right: 0; bottom: var(--tabbar-h); z-index: 19; margin: 0; padding: 0 1rem 0.25rem; background: #1a1a2e; box-shadow: 0 -4px 12px rgba(0,0,0,0.25); }
+            .has-tabbar .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: var(--tabbar-h); padding-bottom: env(safe-area-inset-bottom); background: #1a1a2e; border-top: 1px solid #2c2c48; }
+            .tabbar a, .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; color: #9a9ab5; text-decoration: none; font-size: 0.72rem; background: none; border: none; font-family: inherit; cursor: pointer; }
+            .tabbar a.active, .tabbar button[aria-expanded=true] { color: white; }
+            .tabbar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
             .show-sm { display: inline; }
             /* Tableaux → cartes empilées (libellé de colonne repris via data-label). */
             table, thead, tbody, tr, th, td { display: block; }
@@ -83,7 +99,7 @@
         }
     </style>
 </head>
-<body>
+<body{% if user.is_club_staff %} class="has-tabbar"{% endif %}>
 <nav id="main-nav">
     {% if user.is_authenticated %}
         <a href="/" class="brand">Suivi formation</a>
@@ -91,10 +107,9 @@
                 onclick="const n = document.getElementById('main-nav'); this.setAttribute('aria-expanded', n.classList.toggle('open'));">☰</button>
         <div class="nav-links" id="nav-links">
             {% if user.is_club_staff %}
-                <a href="{% url 'suivi-sessions' %}">Séances</a>
-                <a href="{% url 'suivi-attendance' %}">Présences</a>
-                <a href="{% url 'suivi-students' %}">Élèves</a>
-                <a href="{% url 'formation-list' %}">Formations</a>
+                <a href="{% url 'suivi-sessions' %}" class="nav-main{% if active_tab == 'seances' %} active{% endif %}">Séances</a>
+                <a href="{% url 'suivi-students' %}" class="nav-main{% if active_tab == 'eleves' %} active{% endif %}">Élèves</a>
+                <a href="{% url 'formation-list' %}" class="nav-main{% if active_tab == 'formations' %} active{% endif %}">Formations</a>
             {% endif %}
             {% if user.student_profile %}
                 <a href="{% url 'suivi-mine' %}">Mon suivi</a>
@@ -125,5 +140,19 @@
 <main>
     {% block content %}{% endblock %}
 </main>
+
+{% if user.is_club_staff %}
+<nav class="tabbar" aria-label="Navigation principale">
+    <a href="{% url 'suivi-sessions' %}" class="{% if active_tab == 'seances' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Séances</a>
+    <a href="{% url 'suivi-students' %}" class="{% if active_tab == 'eleves' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14.2c2 .7 3.5 2.6 3.5 5.8"/></svg>Élèves</a>
+    <a href="{% url 'formation-list' %}" class="{% if active_tab == 'formations' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5a2 2 0 0 1 2-2h13v14H6a2 2 0 0 0-2 2zm0 0a2 2 0 0 0 2 2h13"/></svg>Formations</a>
+    <button type="button" aria-label="Plus" aria-expanded="false" aria-controls="nav-links"
+            onclick="const n = document.getElementById('main-nav'); this.setAttribute('aria-expanded', n.classList.toggle('open'));">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Plus</button>
+</nav>
+{% endif %}
 </body>
 </html>

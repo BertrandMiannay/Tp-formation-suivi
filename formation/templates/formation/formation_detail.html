@@ -95,9 +95,14 @@
 </div>
 
 {% if sessions %}
+<div class="card" id="presences">
+    <h2>Présences</h2>
+    {% if attendance_rows %}{% include "suivi/_attendance_matrix.html" with rows=attendance_rows %}{% else %}<p class="muted">Aucun élève inscrit.</p>{% endif %}
+</div>
+
 <div class="card">
     <h2>Dernières séances</h2>
-    {% for s in sessions %}
+    {% for s in sessions|dictsortreversed:"date"|slice:":10" %}
     <div style="padding:0.3rem 0; border-top:1px solid #eee;"><a href="{% url 'suivi-session-detail' s.pk %}" style="color:#1a1a2e;">{{ s }}</a></div>
     {% endfor %}
 </div>
