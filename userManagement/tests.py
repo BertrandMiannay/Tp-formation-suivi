@@ -94,6 +94,12 @@ class PasswordResetLinkTests(TestCase):
     def test_health(self):
         self.assertEqual(self.client.get(reverse('health')).content, b'ok')
 
+    @override_settings(APP_VERSION='12 (abc1234) · publiée le 11/10/2026 14:32')
+    def test_version_on_user_list(self):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse('userManagement:user_list')),
+                            'Version 12 (abc1234) · publiée le 11/10/2026 14:32')
+
 
 create_initial_admin = importlib.import_module(
     'userManagement.migrations.0002_create_initial_admin').create_initial_admin

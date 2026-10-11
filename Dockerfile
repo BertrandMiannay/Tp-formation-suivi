@@ -25,6 +25,10 @@ ENV DATABASE_URL=sqlite:////data/db.sqlite3
 VOLUME /data
 EXPOSE 8000
 
+# Version affichée sur la page Utilisateurs (fournie par le workflow de publication).
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 # Le Host envoyé doit faire partie d'ALLOWED_HOSTS.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os, urllib.request as u; h = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')[0]; u.urlopen(u.Request('http://127.0.0.1:8000/health/', headers={'Host': h}), timeout=4)"
