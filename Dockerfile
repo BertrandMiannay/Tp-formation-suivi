@@ -1,17 +1,24 @@
+# Étape 1 : dépendances installées par Poetry dans un virtualenv (/app/.venv).
+FROM python:3.13-slim AS deps
+
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1
+
+WORKDIR /app
+RUN pip install --no-cache-dir poetry==2.4.3
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --only main --no-cache
+
+# Étape 2 : image finale, sans Poetry, avec le seul virtualenv.
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_NO_INTERACTION=1
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry
-
-COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-root --only main --no-cache
-
+COPY --from=deps /app/.venv /app/.venv
 COPY . .
 # SECRET_KEY factice : uniquement pour collecter les fichiers statiques au build.
 RUN SECRET_KEY=collectstatic-only python manage.py collectstatic --noinput
@@ -21,7 +28,8 @@ RUN useradd --create-home --uid 1000 app \
 USER app
 
 # Base SQLite persistée dans le volume /data (surchargeable par DATABASE_URL).
-ENV DATABASE_URL=sqlite:////data/db.sqlite3
+ENV DATABASE_URL=sqlite:////data/db.sqlite3 \
+    CACHE_DIR=/data/cache
 VOLUME /data
 EXPOSE 8000
 

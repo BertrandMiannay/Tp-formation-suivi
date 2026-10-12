@@ -90,8 +90,9 @@ sudo rm -r /etc/helloasso ~/helloAssoManager      # garder l'archive de la base
 
 ## 4. Après la bascule
 
-- **HSTS** : une fois le HTTPS vérifié, ajouter `SECURE_HSTS_SECONDS=31536000` dans `.env` puis `docker compose up -d`.
-  Les navigateurs refuseront ensuite tout accès en HTTP pendant un an : ne l'activer que si le HTTPS est durable.
+- **HSTS** : actif par défaut en production (1 an, envoyé uniquement sur les réponses HTTPS). Les navigateurs refusent
+  ensuite tout accès en HTTP au domaine : garder le renouvellement Let's Encrypt en place. Pour le couper,
+  `SECURE_HSTS_SECONDS=0` dans `.env` puis `docker compose up -d`.
 - **Mise à jour automatique** (comme Juliettia) : `crontab -e` puis
   ```cron
   */5 * * * * cd ~/tp-formation-suivi && ./update.sh >> update.log 2>&1

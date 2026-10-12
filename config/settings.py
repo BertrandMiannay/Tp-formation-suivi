@@ -63,7 +63,6 @@ INSTALLED_APPS = [
     'django.contrib.sites',
     'allauth',
     'allauth.account',
-    'invitations',
 ]
 
 AUTH_USER_MODEL = 'userManagement.CustomUser'
@@ -131,6 +130,16 @@ if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
     })
 
 
+# Cache partagé par les workers gunicorn et conservé aux redémarrages (volume /data en production) :
+# il porte les compteurs de tentatives de connexion d'allauth. Mémoire locale pendant les tests.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'} if TESTING else {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': os.environ.get('CACHE_DIR', str(BASE_DIR / '.cache')),
+    },
+}
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -185,8 +194,9 @@ SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', str(not DEBUG)) 
 CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', str(not DEBUG)) == 'True'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
-# HSTS : à activer (ex. 31536000) une fois le site servi en HTTPS. La redirection HTTP → HTTPS est faite par nginx.
-SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+# HSTS (1 an par défaut en production, le site n'étant servi qu'en HTTPS ; SECURE_HSTS_SECONDS=0 pour le couper).
+# La redirection HTTP → HTTPS est faite par nginx.
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
 SILENCED_SYSTEM_CHECKS = ['security.W008']
 
 # Durée de validité des liens de réinitialisation de mot de passe générés par un encadrant / admin.
@@ -202,7 +212,7 @@ AUTHENTICATION_BACKENDS = [
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = 'optional'
 ACCOUNT_LOGIN_METHODS = {'email', 'username'}
-ACCOUNT_ADAPTER = 'invitations.models.InvitationsAdapter'
+ACCOUNT_ADAPTER = 'userManagement.adapters.InvitationOnlyAccountAdapter'
 ALLAUTH_TRUSTED_PROXY_COUNT = 1
 # Derrière nginx : le proxy indique si la requête d'origine était en HTTPS.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -211,9 +221,6 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # Email backend (console for dev)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
-# django-invitations
-INVITATIONS_INVITATION_ONLY = True
 
 LOGGING = {
     'version': 1,

@@ -170,7 +170,7 @@ class SuiviTestCase(SuiviFixtures):
             ('suivi-session-detail', [session.pk]), ('suivi-student-detail', [self.alice.pk]),
         ]:
             self.assertRedirects(self.client.get(reverse(name, args=args)), reverse('home'), fetch_redirect_response=False)
-        resp = self.client.post(reverse('suivi-student-detail', args=[self.alice.pk]), {
+        self.client.post(reverse('suivi-student-detail', args=[self.alice.pk]), {
             '_action': 'add_note', 'date': '2026-10-07', 'content': 'x', 'visibility': 'student',
         })
         self.assertFalse(StudentNote.objects.exists())
@@ -371,3 +371,37 @@ class FormationWorkflowTestCase(SuiviFixtures):
         url = reverse('formation-detail', args=[self.formation.pk])
         self.client.post(url, {'_action': 'create_student', 'first_name': 'Z', 'last_name': 'Z'})
         self.assertFalse(Member.objects.filter(first_name='Z').exists())
+
+
+class StudentAccountSecurityTests(SuiviFixtures):
+    STUDENT_FORM = {'first_name': 'Eve', 'last_name': 'Admin', 'birthdate': '', 'medical_certificate_date': '',
+                    'emergency_contact_name': '', 'emergency_contact_phone': ''}
+
+    def test_staff_account_email_not_editable_from_student_sheet(self):
+        admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        self.client.post(reverse('eleve-create'), {**self.STUDENT_FORM, 'email': 'chef@example.com'})
+        member = Member.objects.get(first_name='Eve')
+        self.assertEqual(member.user, admin)  # rattachement conservé (admin qui suit une formation)
+        self.client.post(reverse('eleve-edit', args=[member.pk]), {**self.STUDENT_FORM, 'email': 'pirate@example.com'})
+        admin.refresh_from_db()
+        self.assertEqual(admin.email, 'chef@example.com')
+
+    def test_student_account_email_follows_sheet(self):
+        self.client.post(reverse('eleve-edit', args=[self.alice.pk]), {
+            **self.STUDENT_FORM, 'first_name': 'Alice', 'last_name': 'Martin', 'email': 'alice.martin@example.com',
+        })
+        self.student_user.refresh_from_db()
+        self.assertEqual(self.student_user.email, 'alice.martin@example.com')
+
+    def test_pdf_export_with_markup_in_names(self):
+        self.skill_a.name = 'Remontée < 6 m & palier'
+        self.skill_a.save()
+        resp = self.client.get(reverse('eleve-evaluation-export', args=[self.alice.pk, self.cursus.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_attendance_redirect_encodes_formation(self):
+        resp = self.client.get(reverse('suivi-attendance'), {'formation': '1&vue=liste'})
+        self.assertRedirects(resp, reverse('suivi-students') + '?vue=presences&formation=1%26vue%3Dliste',
+                             fetch_redirect_response=False)

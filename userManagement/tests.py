@@ -127,3 +127,109 @@ class InitialAdminMigrationTests(TestCase):
         self.run_migration(DJANGO_SUPERUSER_USERNAME='', DJANGO_SUPERUSER_PASSWORD='s3cret')
         self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='')
         self.assertFalse(get_user_model().objects.exists())
+
+
+class AccountHardeningTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
+        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        cls.student = User.objects.create_user('eleve', 'eleve@example.com', 'Ancien-Mot-2026')
+        cls.student.groups.add(Group.objects.get(name=Role.STUDENT))
+
+    def test_only_login_and_logout_allauth_pages(self):
+        self.assertEqual(self.client.get(reverse('account_login')).status_code, 200)
+        for path in ['/accounts/signup/', '/accounts/password/reset/', '/accounts/email/',
+                     '/accounts/password/change/', '/invitations/send-invite/']:
+            self.assertEqual(self.client.get(path).status_code, 404, path)
+
+    def test_accept_invite_enforces_password_validators(self):
+        from .views import create_invited_user
+        user = create_invited_user('nouveau@example.com', Role.STUDENT)
+        url = reverse('userManagement:accept_invite', args=[user.invite_token])
+        response = self.client.post(url, {'username': 'nouveau', 'password1': '1234', 'password2': '1234'})
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        self.client.post(url, {'username': 'nouveau', 'password1': 'Plongee-2026!', 'password2': 'Plongee-2026!'})
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+    def test_change_password_enforces_validators(self):
+        self.client.force_login(self.student)
+        url = reverse('userManagement:change_password')
+        self.client.post(url, {'old_password': 'Ancien-Mot-2026', 'new_password1': '1234', 'new_password2': '1234'})
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password('Ancien-Mot-2026'))
+        self.client.post(url, {'old_password': 'Ancien-Mot-2026',
+                               'new_password1': 'Plongee-2026!', 'new_password2': 'Plongee-2026!'})
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password('Plongee-2026!'))
+
+    def test_reset_link_back_url_ignores_external_next(self):
+        self.client.force_login(self.admin)
+        url = reverse('userManagement:password_reset_link', args=[self.student.pk])
+        for next_url in ['javascript:alert(1)', 'https://evil.example.com/']:
+            response = self.client.post(url, {'next': next_url})
+            self.assertEqual(response.context['back_url'], reverse('userManagement:user_list'))
+        response = self.client.post(url, {'next': '/suivi/eleves/'})
+        self.assertEqual(response.context['back_url'], '/suivi/eleves/')
+
+    def test_user_list_escapes_email_in_javascript(self):
+        get_user_model().objects.create_user('piege', "x'-alert`1`-'@a.fr", 'pwd')
+        self.client.force_login(self.admin)
+        content = self.client.get(reverse('userManagement:user_list')).content.decode()
+        self.assertNotIn("Supprimer x&#x27;", content)
+        self.assertIn('Supprimer x\\u0027', content)
+
+
+class InitDevDbTests(TestCase):
+    @override_settings(DEBUG=False)
+    def test_refuses_outside_debug(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with mock.patch('os.remove') as remove, self.assertRaises(CommandError):
+            call_command('init_dev_db')
+        remove.assert_not_called()
+
+
+class SuperuserProtectionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.root = User.objects.create_superuser('root', 'root@example.com', 'pwd')
+        cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
+        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+
+    def test_admin_cannot_take_over_or_delete_superuser(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(reverse('userManagement:password_reset_link', args=[self.root.pk])).url,
+                         reverse('home'))
+        self.assertEqual(self.client.get(reverse('userManagement:user_role', args=[self.root.pk])).status_code, 404)
+        self.client.post(reverse('userManagement:user_delete', args=[self.root.pk]))
+        self.assertTrue(get_user_model().objects.filter(pk=self.root.pk).exists())
+        self.assertNotContains(self.client.get(reverse('userManagement:user_list')),
+                               reverse('userManagement:user_delete', args=[self.root.pk]))
+
+    def test_superuser_can_manage_admin(self):
+        self.client.force_login(self.root)
+        self.assertEqual(self.client.get(reverse('userManagement:user_role', args=[self.admin.pk])).status_code, 200)
+        self.client.post(reverse('userManagement:user_delete', args=[self.admin.pk]))
+        self.assertFalse(get_user_model().objects.filter(pk=self.admin.pk).exists())
+
+    def test_invite_rejects_existing_email_whatever_the_case(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('userManagement:invite'), {'email': 'Admin@Example.com', 'role': Role.INSTRUCTOR})
+        self.assertFormError(response.context['form'], 'email', 'Un utilisateur avec cet email existe déjà.')
+        self.assertEqual(get_user_model().objects.filter(email__iexact='admin@example.com').count(), 1)
+
+    def test_django_admin_login_goes_through_allauth(self):
+        response = self.client.get('/admin/login/?next=/admin/')
+        self.assertRedirects(response, reverse('account_login') + '?next=/admin/', fetch_redirect_response=False)
+        self.client.post('/admin/login/', {'username': 'root', 'password': 'pwd'})
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.client.force_login(self.admin)  # connecté sans accès à l'admin : pas de boucle de redirection
+        self.assertRedirects(self.client.get('/admin/login/'), reverse('home'), fetch_redirect_response=False)
+        self.client.force_login(self.root)
+        self.assertEqual(self.client.get('/admin/').status_code, 200)

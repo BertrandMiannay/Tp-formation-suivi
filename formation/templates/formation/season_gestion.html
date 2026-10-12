@@ -42,7 +42,7 @@
                 <form method="post" action="{% url 'saison-delete' season.pk %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger" style="font-size:0.8rem; padding:0.2rem 0.75rem;"
-                            onclick="return confirm('Supprimer la saison « {{ season.label }} » ?')">Supprimer</button>
+                            onclick="return confirm('Supprimer la saison « {{ season.label|escapejs }} » ?')">Supprimer</button>
                 </form>
             </td>
         </tr>

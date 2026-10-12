@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -115,11 +116,13 @@ def _session_cursus_ids(session):
     return set(session.formations.values_list('cursus_id', flat=True))
 
 
-def _candidate_skills(session_ids, member):
-    """Compétences proposables pour un élève lors d'une séance : celles des cursus de ses formations,
-    restreintes aux cursus des formations de la séance (`session_ids`) quand ils recoupent les siens."""
-    member_ids = member.cursus_ids()
-    cursus_ids = (member_ids & session_ids) or member_ids
+def _candidate_cursus_ids(member_cursus_ids, session_cursus_ids):
+    """Cursus proposés pour un élève lors d'une séance : ceux de ses formations, restreints aux
+    cursus des formations de la séance quand ils recoupent les siens."""
+    return (member_cursus_ids & session_cursus_ids) or member_cursus_ids
+
+
+def _skills_of_cursus(cursus_ids):
     return list(
         Skill.objects.filter(category__cursus__in=cursus_ids)
         .select_related('category__cursus')
@@ -127,13 +130,14 @@ def _candidate_skills(session_ids, member):
     )
 
 
-def _skill_tree(member, skills, worked):
+def _candidate_skills(session_ids, member):
+    """Compétences proposables pour un élève lors d'une séance (voir `_candidate_cursus_ids`)."""
+    return _skills_of_cursus(_candidate_cursus_ids(member.cursus_ids(), session_ids))
+
+
+def _skill_tree(skills, worked, global_status):
     """Regroupe les compétences par cursus puis catégorie, avec l'état travaillé / évalué
-    pour la séance et le statut global de l'élève."""
-    global_status = {
-        ms.skill_id: ms.status
-        for ms in MemberSkill.objects.filter(member=member, skill__in=skills)
-    }
+    pour la séance et le statut global de l'élève (`global_status` : skill_id → statut)."""
     tree = []
     for skill in skills:
         cursus, category = skill.category.cursus, skill.category
@@ -168,6 +172,20 @@ def _attach_worked_skills(member, attendances):
     for a in attendances:
         a.worked = by_session.get(a.session_id, [])
     return attendances
+
+
+def _tracking_sheet(member, season):
+    """Partie commune de la fiche élève (staff) et de « Mon suivi » : présences de la saison avec
+    les compétences travaillées, statistiques et progression par cursus."""
+    attendances = member.attendances.select_related('session')
+    if season:
+        attendances = attendances.filter(session__season=season)
+    attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date', '-session__pk')))
+    return {
+        'attendances': attendances,
+        'stats': _attendance_stats(attendances),
+        'formations': _skills_progress(member),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -208,10 +226,7 @@ def session_create(request):
             messages.success(request, f"{session} créée.")
             return redirect('suivi-session-detail', pk=session.pk)
     else:
-        initial = {'date': timezone.localdate()}
-        if request.user.is_club_staff:
-            initial['instructors'] = [request.user.pk]
-        form = TrainingSessionForm(initial=initial)
+        form = TrainingSessionForm(initial={'date': timezone.localdate(), 'instructors': [request.user.pk]})
     return render(request, 'suivi/session_form.html', {
         'form': form,
         'active_tab': 'seances',
@@ -344,19 +359,36 @@ def session_detail(request, pk):
     worked_by_member = {}
     for ws in session.worked_skills.select_related('author'):
         worked_by_member.setdefault(ws.member_id, {})[ws.skill_id] = ws
-    skill_rows = []
+    skill_members = []
     for r in roster_rows:
-        m = r['member']
+        is_present = bool(r['attendance'] and r['attendance'].status == Attendance.Status.PRESENT)
+        if is_present or r['member'].pk in worked_by_member:
+            skill_members.append((r['member'], is_present))
+
+    # Compétences et statuts de tous les élèves concernés en quelques requêtes (pas une série par élève).
+    member_ids = [m.pk for m, _ in skill_members]
+    member_cursus = {pk: set() for pk in member_ids}
+    for member_id, cursus_id in (
+        Enrollment.objects.filter(member__in=member_ids).exclude(status=Enrollment.Status.DROPPED)
+        .values_list('member_id', 'formation__cursus_id')
+    ):
+        member_cursus[member_id].add(cursus_id)
+    candidate_cursus = {pk: _candidate_cursus_ids(ids, session_cursus_ids) for pk, ids in member_cursus.items()}
+    all_skills = _skills_of_cursus(set().union(*candidate_cursus.values()))
+    global_status = {}
+    for ms in MemberSkill.objects.filter(member__in=member_ids, skill__in=all_skills):
+        global_status.setdefault(ms.member_id, {})[ms.skill_id] = ms.status
+
+    skill_rows = []
+    for m, is_present in skill_members:
         worked = worked_by_member.get(m.pk, {})
-        is_present = r['attendance'] and r['attendance'].status == Attendance.Status.PRESENT
-        if not is_present and not worked:
-            continue
+        skills = [s for s in all_skills if s.category.cursus_id in candidate_cursus[m.pk]]
         skill_rows.append({
             'member': m,
             'present': is_present,
             'worked_count': len(worked),
             'acquired_count': sum(1 for ws in worked.values() if ws.status == MemberSkill.SkillStatus.ACQUIRED),
-            'cursus': _skill_tree(m, _candidate_skills(session_cursus_ids, m), worked),
+            'cursus': _skill_tree(skills, worked, global_status.get(m.pk, {})),
         })
 
     roster_ids = [m.pk for m in roster]
@@ -409,10 +441,10 @@ def attendance_matrix(sessions, students):
 @club_staff_required
 def attendance_overview(request):
     """Ancienne page « Présences », désormais une vue de la liste des élèves."""
-    url = reverse('suivi-students') + '?vue=presences'
+    params = {'vue': 'presences'}
     if request.GET.get('formation'):
-        url += '&formation=' + request.GET['formation']
-    return redirect(url)
+        params['formation'] = request.GET['formation']
+    return redirect(reverse('suivi-students') + '?' + urlencode(params))
 
 
 def _attendance_context(season, formation_id):
@@ -520,20 +552,12 @@ def student_detail(request, pk):
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
 
     season = _current_season()
-    attendances = member.attendances.select_related('session')
-    if season:
-        attendances = attendances.filter(session__season=season)
-    attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date', '-session__pk')))
-    enrollments = member.enrollments.select_related('formation__cursus')
-
     return render(request, 'suivi/student_detail.html', {
         'member': member,
-        'enrollments': enrollments,
+        'enrollments': member.enrollments.select_related('formation__cursus'),
         'enrollable_formations': Formation.objects.active()
                                  .exclude(enrollments__member=member).order_by('name'),
-        'attendances': attendances,
-        'stats': _attendance_stats(attendances),
-        'formations': _skills_progress(member),
+        **_tracking_sheet(member, season),
         'exercises': member.exercises.select_related('skill', 'session', 'author'),
         'notes': member.student_notes.select_related('session', 'author'),
         'exercise_form': exercise_form,
@@ -557,15 +581,9 @@ def my_tracking(request):
     season = _current_season()
     sheets = []
     for member in members:
-        attendances = member.attendances.select_related('session')
-        if season:
-            attendances = attendances.filter(session__season=season)
-        attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date')))
         sheets.append({
             'member': member,
-            'attendances': attendances,
-            'stats': _attendance_stats(attendances),
-            'formations': _skills_progress(member),
+            **_tracking_sheet(member, season),
             'exercises': member.exercises.select_related('skill', 'session'),
             'notes': member.student_notes.filter(visibility=StudentNote.Visibility.STUDENT).select_related('session', 'author'),
         })

@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from userManagement.forms import StaffChoiceField
+from userManagement.models import Role
 from .models import Cursus, Enrollment, Formation, Member
 
 
@@ -29,11 +30,25 @@ class StudentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             self.fields['email'].initial = self.instance.email
+            if not self.manages_account_email:
+                # Compte encadrant / administrateur rattaché : son email est géré par son titulaire.
+                self.fields['email'].disabled = True
+                self.fields['email'].help_text = (
+                    "Compte encadrant ou administrateur : l'email ne se modifie pas depuis la fiche élève."
+                )
             del self.fields['formation']  # inscriptions gérées depuis la fiche
         else:
             self.fields['formation'].queryset = Formation.objects.active()
 
+    @property
+    def manages_account_email(self):
+        """La fiche ne pilote l'email que d'un compte élève (ou d'une fiche sans compte)."""
+        user = self.instance.user if self.instance.user_id else None
+        return user is None or user.role == Role.STUDENT
+
     def clean_email(self):
+        if not self.manages_account_email:
+            return self.instance.user.email
         email = self.cleaned_data['email'].strip().lower()
         if not email:
             if self.instance.user_id:

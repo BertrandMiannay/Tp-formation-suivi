@@ -32,14 +32,3 @@
 {% empty %}
 <p class="muted">Inscrit à aucune formation.</p>
 {% endfor %}
-<style>
-@media (max-width: 640px) {
-    /* Nom + statut sur une ligne, puis nombre de séances et dernière évaluation en petit. */
-    .skills-table tr { display:grid; grid-template-columns:1fr auto; column-gap:0.5rem; padding:0.5rem 0; }
-    .skills-table td { display:block; border:none; padding:0 !important; }
-    .sp-name { grid-column:1; }
-    .sp-status { grid-column:2; grid-row:1; }
-    .sp-worked, .sp-eval { grid-column:1 / -1; }
-    .sp-eval:empty { display:none; }
-}
-</style>
