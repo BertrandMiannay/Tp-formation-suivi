@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill
+from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation
 
 
 class TrainingSession(models.Model):
@@ -77,6 +77,10 @@ class WorkedSkill(models.Model):
                                      help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
     author  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                 related_name='+', verbose_name='Saisi par')
+    # Évaluation de l'historique créée par cette saisie : mise à jour quand la séance est ressaisie,
+    # supprimée quand l'évaluation du jour est retirée (le statut de l'élève est alors recalculé).
+    evaluation = models.OneToOneField(SkillEvaluation, null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name='worked_skill', verbose_name='Évaluation')
 
     class Meta:
         verbose_name        = 'Compétence travaillée'

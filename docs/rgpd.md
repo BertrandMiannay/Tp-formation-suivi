@@ -99,7 +99,9 @@ Accès, rectification, effacement, limitation, portabilité, opposition (art. 15
 
 Voir `SECURITY_CHECK.md` : rôles et gardes d'accès, SECRET_KEY obligatoire, cookies sécurisés, invitations à durée limitée, journalisation des actions sensibles, limitation des tentatives de connexion.
 
-À renforcer : chiffrement des sauvegardes, revue annuelle des comptes et des rôles.
+Sauvegardes : copie quotidienne et avant chaque migration dans le volume de données (`deploy/DEPLOY.md`, « Sauvegardes »), 14 jours conservés.
+
+À renforcer : chiffrement des copies rapatriées hors du serveur, revue annuelle des comptes et des rôles.
 
 ---
 

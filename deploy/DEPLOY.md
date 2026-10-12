@@ -122,6 +122,37 @@ Il n'y a pas de retour arrière automatique : si le conteneur ne passe pas `heal
 La base SQLite est dans le volume Docker `tp-formation-suivi_data` (monté sur `/data`).
 Elle survit aux mises à jour et aux `docker compose down` (mais pas à `down -v`).
 
+### Sauvegardes
+
+`python manage.py backup_db` copie la base à chaud (API de sauvegarde SQLite) dans `/data/backups`
+(`BACKUP_DIR` pour changer de dossier) et ne garde que les 14 copies les plus récentes (`--keep`).
+
+- **Avant chaque migration** : le conteneur fait lui-même une copie `…-avant-migration.sqlite3` (5 conservées)
+  quand une nouvelle image apporte des migrations.
+- **Chaque nuit** : `crontab -e` sur l'hôte, puis
+  ```cron
+  17 3 * * * cd ~/tp-formation-suivi && docker compose exec -T web python manage.py backup_db >> backup.log 2>&1
+  ```
+- **Hors du serveur** : les copies restent dans le volume Docker, sur le même disque. Les rapatrier régulièrement
+  (données personnelles d'élèves : stockage chiffré), par exemple depuis un autre poste :
+  ```bash
+  ssh serveur 'cd ~/tp-formation-suivi && docker cp "$(docker compose ps -q web)":/data/backups -' | tar -x -C ~/sauvegardes-suivi
+  ```
+
+**Restaurer une copie** :
+
+```bash
+docker compose exec web ls /data/backups                         # choisir la copie
+docker compose stop web
+docker compose run --rm --no-deps --entrypoint sh web -c \
+  'cp /data/db.sqlite3 /data/db-avant-restauration.sqlite3 && rm -f /data/db.sqlite3-wal /data/db.sqlite3-shm \
+   && cp /data/backups/<copie>.sqlite3 /data/db.sqlite3'
+docker compose up -d
+```
+
+Une copie `avant-migration` restaurée sur une image plus récente serait aussitôt re-migrée : remettre d'abord
+`IMAGE_TAG=sha-<commit précédent>` dans `.env` (voir « Revenir à une version précédente »).
+
 ## Commandes utiles
 
 ```bash

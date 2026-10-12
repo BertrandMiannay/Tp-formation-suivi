@@ -638,3 +638,121 @@ class CursusDeleteTests(SuiviFixtures):
         self.client.force_login(self.instructor)
         self.client.post(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
         self.assertTrue(Cursus.objects.filter(pk=self.empty.pk).exists())
+
+
+class SkillStatusConsistencyTests(SuiviFixtures):
+    """Le statut d'une compétence suit toujours la dernière évaluation restante."""
+
+    def _status(self, skill):
+        ms = MemberSkill.objects.filter(member=self.alice, skill=skill).first()
+        return ms.status if ms else 'not_acquired'
+
+    def _save_skills(self, session, data):
+        self.client.post(reverse('suivi-session-detail', args=[session.pk]),
+                         {'_action': 'worked_skills', 'member_id': self.alice.pk, **data})
+
+    def test_session_resave_updates_single_evaluation(self):
+        session = self._create_session()
+        a = self.skill_a.pk
+        self._save_skills(session, {f'ws_{a}_status': 'in_progress'})
+        self._save_skills(session, {f'ws_{a}_status': 'in_progress', f'ws_{a}_comment': 'Mieux'})
+        self._save_skills(session, {f'ws_{a}_status': 'acquired', f'ws_{a}_comment': 'Mieux'})
+        ev = SkillEvaluation.objects.get()
+        self.assertEqual((ev.status, ev.comment, ev.date), ('acquired', 'Mieux', session.date))
+        self.assertEqual(WorkedSkill.objects.get().evaluation, ev)
+        self.assertEqual(self._status(self.skill_a), 'acquired')
+
+    def test_unchecking_or_clearing_session_evaluation_restores_status(self):
+        url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'in_progress'})
+        earlier = SkillEvaluation.objects.get()
+        SkillEvaluation.objects.filter(pk=earlier.pk).update(date=date(2026, 9, 1))
+        session = self._create_session()
+        a = self.skill_a.pk
+
+        self._save_skills(session, {f'ws_{a}_status': 'acquired'})
+        self.assertEqual(self._status(self.skill_a), 'acquired')
+        # Évaluation du jour retirée, compétence toujours travaillée
+        self._save_skills(session, {f'ws_{a}': '1', f'ws_{a}_status': ''})
+        self.assertEqual(list(SkillEvaluation.objects.all()), [earlier])
+        self.assertIsNone(WorkedSkill.objects.get().evaluation)
+        self.assertEqual(self._status(self.skill_a), 'in_progress')
+        # Compétence décochée
+        self._save_skills(session, {f'ws_{a}_status': 'acquired'})
+        self._save_skills(session, {})
+        self.assertFalse(WorkedSkill.objects.exists())
+        self.assertEqual(list(SkillEvaluation.objects.all()), [earlier])
+        self.assertEqual(self._status(self.skill_a), 'in_progress')
+
+    def test_older_session_does_not_override_newer_evaluation(self):
+        session = self._create_session()  # 07/10/2026
+        url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'acquired'})
+        SkillEvaluation.objects.update(date=date(2026, 10, 20))
+        self._save_skills(session, {f'ws_{self.skill_a.pk}_status': 'in_progress'})
+        self.assertEqual(SkillEvaluation.objects.count(), 2)
+        self.assertEqual(self._status(self.skill_a), 'acquired')
+
+    def test_deleting_evaluation_restores_previous_status(self):
+        url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'in_progress'})
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'acquired'})
+        last = SkillEvaluation.objects.order_by('-pk').first()
+        with self.assertLogs('formation.views', 'INFO') as logs:
+            self.client.post(reverse('eleve-evaluation-delete', args=[self.alice.pk, last.pk]))
+        self.assertIn('EVALUATION_DELETE', logs.output[0])
+        self.assertEqual(self._status(self.skill_a), 'in_progress')
+        first = SkillEvaluation.objects.get()
+        self.client.post(reverse('eleve-evaluation-delete', args=[self.alice.pk, first.pk]))
+        self.assertFalse(MemberSkill.objects.filter(member=self.alice).exists())
+
+    def test_evaluation_page_keeps_skills_missing_from_form(self):
+        url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'acquired',
+                               f'skill_{self.skill_b.pk}_status': 'in_progress'})
+        # Seule B est envoyée (ou A avec un statut invalide) : A reste acquise
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'bogus',
+                               f'skill_{self.skill_b.pk}_status': 'acquired'})
+        self.assertEqual(self._status(self.skill_a), 'acquired')
+        self.assertEqual(self._status(self.skill_b), 'acquired')
+        self.assertEqual(SkillEvaluation.objects.count(), 3)
+        # Aucune ligne de statut créée pour les compétences jamais évaluées
+        self.client.post(url, {f'skill_{self.skill_a.pk}_status': 'acquired'})
+        self.assertEqual(MemberSkill.objects.filter(member=self.alice).count(), 2)
+
+
+class SmallFixesTests(SuiviFixtures):
+    def test_invalid_season_parameter_falls_back_to_current(self):
+        resp = self.client.get(reverse('suivi-sessions') + '?season=abc')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['season'], self.season)
+
+    def test_only_one_current_season(self):
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError, transaction
+        other = Season(label='2027-2028', current=True)
+        with self.assertRaises(ValidationError):
+            other.full_clean()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            other.save()
+        self.client.force_login(get_user_model().objects.create_superuser('root', 'root@example.com', 'pwd'))
+        other = Season.objects.create(label='2027-2028')
+        self.client.post(reverse('saison-set-current', args=[other.pk]))
+        self.assertEqual(list(Season.objects.filter(current=True)), [other])
+
+    def test_cannot_enroll_in_closed_formation(self):
+        closed = Formation.objects.create(name='N1 promo 2025', cursus=self.cursus, status=Formation.Status.CLOSED)
+        url = reverse('suivi-student-detail', args=[self.carol.pk])
+        resp = self.client.post(url, {'_action': 'enroll', 'formation_id': closed.pk})
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(Enrollment.objects.filter(member=self.carol, formation=closed).exists())
+        self.client.post(url, {'_action': 'enroll', 'formation_id': self.formation.pk})
+        self.assertTrue(Enrollment.objects.filter(member=self.carol, formation=self.formation).exists())
+
+    def test_note_deletion_is_logged(self):
+        note = StudentNote.objects.create(member=self.alice, date=date(2026, 10, 1), content='x')
+        with self.assertLogs('suivi.views', 'INFO') as logs:
+            self.client.post(reverse('suivi-student-detail', args=[self.alice.pk]),
+                             {'_action': 'delete_note', 'note_pk': note.pk})
+        self.assertIn('NOTE_DELETE', logs.output[0])
+        self.assertFalse(StudentNote.objects.exists())

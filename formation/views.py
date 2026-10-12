@@ -590,29 +590,29 @@ def evaluation_save(request, pk, cursus_pk):
         return redirect('eleve-evaluation', pk=pk)
     member = get_object_or_404(Member, pk=pk)
     cursus = get_object_or_404(Cursus, pk=cursus_pk)
-    valid_statuses = set(dict(MemberSkill.SkillStatus.choices))
+    valid_statuses = set(MemberSkill.SkillStatus.values)
     skills = Skill.objects.filter(category__cursus=cursus)
     today = timezone.localdate()
     current = {
         ms.skill_id: ms.status
         for ms in MemberSkill.objects.filter(member=member, skill__in=skills)
     }
-    for skill in skills:
-        status = request.POST.get(f'skill_{skill.pk}_status', MemberSkill.SkillStatus.NOT_ACQUIRED)
-        if status not in valid_statuses:
-            status = MemberSkill.SkillStatus.NOT_ACQUIRED
-        comment = request.POST.get(f'skill_{skill.pk}_comment', '').strip()
-        staff_comment = request.POST.get(f'skill_{skill.pk}_staff_comment', '').strip()
-        MemberSkill.objects.update_or_create(
-            member=member, skill=skill,
-            defaults={'status': status},
-        )
-        if comment or staff_comment or status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
-            SkillEvaluation.objects.create(
-                member=member, skill=skill,
-                date=today, status=status, comment=comment, staff_comment=staff_comment,
-                author=request.user,
-            )
+    with transaction.atomic():
+        for skill in skills:
+            # Statut absent : le statut actuel est conservé (jamais remis à « non acquis ») ; invalide : ignoré.
+            old = current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED)
+            status = request.POST.get(f'skill_{skill.pk}_status', old)
+            if status not in valid_statuses:
+                continue
+            comment = request.POST.get(f'skill_{skill.pk}_comment', '').strip()
+            staff_comment = request.POST.get(f'skill_{skill.pk}_staff_comment', '').strip()
+            if comment or staff_comment or status != old:
+                SkillEvaluation.objects.create(
+                    member=member, skill=skill,
+                    date=today, status=status, comment=comment, staff_comment=staff_comment,
+                    author=request.user,
+                )
+                MemberSkill.refresh(member, skill)
     return redirect('eleve-evaluation', pk=pk)
 
 
@@ -727,5 +727,11 @@ def evaluation_export(request, pk, cursus_pk):
 def evaluation_delete(request, pk, ev_pk):
     if request.method != 'POST':
         return redirect('eleve-evaluation', pk=pk)
-    get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk).delete()
+    evaluation = get_object_or_404(SkillEvaluation.objects.select_related('member', 'skill'), pk=ev_pk, member__pk=pk)
+    logger.info("EVALUATION_DELETE pk=%s member=%s skill=%s by=%s",
+                evaluation.pk, pk, evaluation.skill_id, request.user.username)
+    with transaction.atomic():
+        evaluation.delete()
+        # Le statut de l'élève redevient celui de l'évaluation précédente.
+        MemberSkill.refresh(evaluation.member, evaluation.skill)
     return redirect('eleve-evaluation', pk=pk)

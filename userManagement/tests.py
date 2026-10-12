@@ -233,3 +233,31 @@ class SuperuserProtectionTests(TestCase):
         self.assertRedirects(self.client.get('/admin/login/'), reverse('home'), fetch_redirect_response=False)
         self.client.force_login(self.root)
         self.assertEqual(self.client.get('/admin/').status_code, 200)
+
+
+class BackupDbTests(TestCase):
+    def test_backup_copies_database_and_rotates(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from django.conf import settings
+        from django.core.management import call_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / 'db.sqlite3'
+            with sqlite3.connect(source) as con:
+                con.execute('create table t (x)')
+                con.execute("insert into t values ('ok')")
+            con.close()
+            backups = Path(tmp) / 'backups'
+            with mock.patch.dict(settings.DATABASES['default'], NAME=str(source)):
+                for second in range(3):
+                    with mock.patch(f'{__package__}.management.commands.backup_db.datetime') as dt:
+                        dt.now.return_value.__format__ = lambda self, fmt, s=second: f'20261012-00000{s}'
+                        call_command('backup_db', '--label', 'test', '--keep', '2', '--dir', str(backups),
+                                     stdout=mock.Mock())
+            copies = sorted(p.name for p in backups.iterdir())
+            self.assertEqual(copies, ['db-20261012-000001-test.sqlite3', 'db-20261012-000002-test.sqlite3'])
+            with sqlite3.connect(backups / copies[-1]) as con:
+                self.assertEqual(con.execute('select x from t').fetchall(), [('ok',)])
+            con.close()

@@ -210,8 +210,8 @@ def _tracking_sheet(member, season, for_student=False):
 @club_staff_required
 def session_list(request):
     seasons = Season.objects.order_by('-current', 'label')
-    season_id = request.GET.get('season')
-    season = Season.objects.filter(pk=season_id).first() if season_id else _current_season()
+    season_id = request.GET.get('season', '')
+    season = Season.objects.filter(pk=season_id).first() if season_id.isdigit() else _current_season()
     sessions = TrainingSession.objects.all()
     if season:
         sessions = sessions.filter(season=season)
@@ -308,10 +308,9 @@ def session_detail(request, pk):
             member = get_object_or_404(Member, pk=request.POST.get('member_id'))
             valid = set(MemberSkill.SkillStatus.values)
             candidates = _candidate_skills(_session_cursus_ids(session), member)
-            existing = {ws.skill_id: ws for ws in WorkedSkill.objects.filter(session=session, member=member)}
-            current = {
-                ms.skill_id: ms.status
-                for ms in MemberSkill.objects.filter(member=member, skill__in=candidates)
+            existing = {
+                ws.skill_id: ws
+                for ws in WorkedSkill.objects.filter(session=session, member=member).select_related('evaluation')
             }
             evaluated = 0
             with transaction.atomic():
@@ -323,30 +322,37 @@ def session_detail(request, pk):
                     comment = request.POST.get(f'{prefix}_comment', '').strip()[:255]
                     staff_comment = request.POST.get(f'{prefix}_staff_comment', '').strip()[:255]
                     worked = bool(request.POST.get(prefix)) or bool(status)
-                    if not worked:
-                        if skill.pk in existing:
-                            existing[skill.pk].delete()
-                        continue
                     ws = existing.get(skill.pk)
+                    if not worked:
+                        if ws:
+                            evaluation = ws.evaluation
+                            ws.delete()
+                            if evaluation:
+                                evaluation.delete()
+                                MemberSkill.refresh(member, skill)
+                        continue
                     if ws and (ws.status, ws.comment, ws.staff_comment) == (status, comment, staff_comment):
                         continue
-                    WorkedSkill.objects.update_or_create(
-                        session=session, member=member, skill=skill,
-                        defaults={'status': status, 'comment': comment, 'staff_comment': staff_comment,
-                                  'author': request.user},
-                    )
-                    old = current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED)
-                    if status and (status != old or comment or staff_comment):
-                        MemberSkill.objects.update_or_create(
-                            member=member, skill=skill, defaults={'status': status},
-                        )
-                        SkillEvaluation.objects.create(
-                            member=member, skill=skill, date=session.date, status=status,
-                            comment=comment or f"Séance du {session.date:%d/%m/%Y}",
-                            staff_comment=staff_comment,
-                            author=request.user,
-                        )
+                    ws = ws or WorkedSkill(session=session, member=member, skill=skill)
+                    ws.status, ws.comment, ws.staff_comment, ws.author = status, comment, staff_comment, request.user
+                    # Une seule évaluation par séance et compétence : mise à jour à chaque ressaisie,
+                    # supprimée si l'évaluation du jour est retirée.
+                    evaluation, removed = ws.evaluation, None
+                    if status:
+                        evaluation = evaluation or SkillEvaluation(member=member, skill=skill)
+                        evaluation.date, evaluation.status, evaluation.author = session.date, status, request.user
+                        evaluation.comment = comment or f"Séance du {session.date:%d/%m/%Y}"
+                        evaluation.staff_comment = staff_comment
+                        evaluation.save()
+                        ws.evaluation = evaluation
                         evaluated += 1
+                    elif evaluation:
+                        ws.evaluation, removed = None, evaluation
+                    ws.save()
+                    if removed:
+                        removed.delete()
+                    if status or removed:
+                        MemberSkill.refresh(member, skill)
             messages.success(
                 request,
                 f"Compétences de {member.first_name} {member.last_name} enregistrées"
@@ -534,11 +540,15 @@ def student_detail(request, pk):
             open_form = 'note'
 
         elif action == 'delete_note':
-            StudentNote.objects.filter(pk=request.POST.get('note_pk'), member=member).delete()
+            note = StudentNote.objects.filter(pk=request.POST.get('note_pk'), member=member).first()
+            if note:
+                logger.info("NOTE_DELETE pk=%s member=%s by=%s", note.pk, member.pk, request.user.username)
+                note.delete()
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
 
         elif action == 'enroll':
-            formation = get_object_or_404(Formation, pk=request.POST.get('formation_id'))
+            # Seules les formations en cours sont proposées : une formation terminée est refusée.
+            formation = get_object_or_404(Formation.objects.active(), pk=request.POST.get('formation_id'))
             Enrollment.objects.get_or_create(member=member, formation=formation)
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
 

@@ -13,6 +13,11 @@ class Season(models.Model):
     class Meta:
         verbose_name = 'Saison'
         verbose_name_plural = 'Saisons'
+        constraints = [
+            models.UniqueConstraint(fields=['current'], condition=models.Q(current=True),
+                                    name='single_current_season',
+                                    violation_error_message='Une seule saison peut être en cours.'),
+        ]
 
 
 class Cursus(models.Model):
@@ -187,6 +192,18 @@ class MemberSkill(models.Model):
 
     def __str__(self):
         return f"{self.member} — {self.skill}"
+
+    @classmethod
+    def refresh(cls, member, skill):
+        """Recalcule le statut d'une compétence : celui de la dernière évaluation (date, puis saisie),
+        « non acquis » s'il n'en reste aucune. À appeler après tout ajout / modification / suppression
+        d'une `SkillEvaluation`."""
+        last = (SkillEvaluation.objects.filter(member=member, skill=skill)
+                .order_by('-date', '-pk').values_list('status', flat=True).first())
+        if last:
+            cls.objects.update_or_create(member=member, skill=skill, defaults={'status': last})
+        else:
+            cls.objects.filter(member=member, skill=skill).delete()
 
 
 class SkillEvaluation(models.Model):
