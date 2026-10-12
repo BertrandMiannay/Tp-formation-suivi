@@ -22,6 +22,7 @@ class AccountChoiceField(forms.ModelChoiceField):
 
 
 class StudentForm(forms.ModelForm):
+    required_css_class = 'required'  # libellé suivi d'une étoile (app.css)
     account = AccountChoiceField(
         queryset=get_user_model().objects.none(), required=False,
         label='À partir d\'un compte existant', empty_label='— Aucun : nouvel élève —',
@@ -110,6 +111,7 @@ class StudentForm(forms.ModelForm):
 
 
 class StudentImportForm(forms.Form):
+    required_css_class = 'required'
     """Import de plusieurs élèves : une ligne « Nom ; Prénom ; Email » par élève (email facultatif)."""
     MAX_LINES = 200
 

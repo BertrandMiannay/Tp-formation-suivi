@@ -14,8 +14,8 @@
     {% csrf_token %}
     <input type="hidden" name="_action" value="create_student">
     <label style="margin:0;">Nouvel élève :</label>
-    <input type="text" name="first_name" placeholder="Prénom" required value="{{ quick_form.first_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
-    <input type="text" name="last_name" placeholder="Nom" required value="{{ quick_form.last_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
+    <input type="text" name="first_name" placeholder="Prénom *" required value="{{ quick_form.first_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
+    <input type="text" name="last_name" placeholder="Nom *" required value="{{ quick_form.last_name.value|default:'' }}" style="width:auto; flex:1; min-width:120px;">
     {% if formations %}
     <select name="formation_id" style="width:auto;" aria-label="Formation">
         {% for f in formations %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
