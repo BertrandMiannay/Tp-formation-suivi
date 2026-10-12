@@ -249,6 +249,55 @@ class SuiviTestCase(SuiviFixtures):
         self.bob.user.refresh_from_db()
         self.assertNotEqual(self.bob.user.invite_token, token)
 
+    def test_private_comments_hidden_from_student(self):
+        session = self._create_session()
+        url = reverse('suivi-session-detail', args=[session.pk])
+        # Présence : commentaire réservé à l'équipe sauf si la case est décochée
+        self.client.post(url, {
+            '_action': 'attendance',
+            f'att_{self.alice.pk}': 'present', f'att_{self.alice.pk}_comment': 'Retard visible',
+            f'att_{self.bob.pk}': 'absent', f'att_{self.bob.pk}_comment': 'Sans prévenir',
+            f'att_{self.bob.pk}_private': '1',
+        })
+        self.assertFalse(Attendance.objects.get(member=self.alice).comment_private)
+        self.assertTrue(Attendance.objects.get(member=self.bob).comment_private)
+        # Compétences : A commentaire privé, B commentaire visible
+        self.client.post(url, {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            f'ws_{self.skill_a.pk}_status': 'in_progress', f'ws_{self.skill_a.pk}_comment': 'Stress en descente',
+            f'ws_{self.skill_a.pk}_private': '1',
+            f'ws_{self.skill_b.pk}_status': 'acquired', f'ws_{self.skill_b.pk}_comment': 'Bravo',
+        })
+        self.assertTrue(SkillEvaluation.objects.get(skill=self.skill_a).comment_private)
+        self.assertFalse(SkillEvaluation.objects.get(skill=self.skill_b).comment_private)
+
+        resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, 'Stress en descente')
+        self.client.force_login(self.student_user)
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, 'Retard visible')
+        self.assertContains(resp, 'Bravo')
+        self.assertNotContains(resp, 'Stress en descente')
+
+        # Ne changer que la visibilité ne crée pas de nouvelle évaluation
+        self.client.force_login(self.instructor)
+        self.client.post(url, {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            f'ws_{self.skill_a.pk}_status': 'in_progress', f'ws_{self.skill_a.pk}_comment': 'Stress en descente',
+            f'ws_{self.skill_b.pk}_status': 'acquired', f'ws_{self.skill_b.pk}_comment': 'Bravo',
+        })
+        self.assertEqual(SkillEvaluation.objects.count(), 2)
+        self.assertFalse(SkillEvaluation.objects.get(skill=self.skill_a).comment_private)
+
+        # Page d'évaluation
+        self.client.post(reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk]), {
+            f'skill_{self.skill_b.pk}_status': 'acquired', f'skill_{self.skill_b.pk}_comment': 'Note interne',
+            f'skill_{self.skill_b.pk}_private': '1',
+        })
+        self.assertTrue(SkillEvaluation.objects.get(comment='Note interne').comment_private)
+        self.client.force_login(self.student_user)
+        self.assertNotContains(self.client.get(reverse('suivi-mine')), 'Note interne')
+
     def test_my_tracking_without_profile(self):
         self.client.force_login(self.instructor)
         resp = self.client.get(reverse('suivi-mine'))

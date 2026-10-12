@@ -105,6 +105,12 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .badge-not_acquired, .badge-none { background:#f3f4f6; color:#6b7280; }
 .badge-staff { background:#e0e7ff; color:#3730a3; }
 .badge-student { background:#dcfce7; color:#166534; }
+/* Commentaire + case « réservé à l'équipe » (séance, évaluation). */
+.comment-field { display:flex; align-items:center; gap:0.5rem; }
+.comment-field input[type="text"] { flex:1; min-width:0; }
+.private-toggle { display:inline-flex; align-items:center; gap:0.25rem; font-size:0.78rem; font-weight:normal; color:#3730a3; white-space:nowrap; margin:0; cursor:pointer; }
+.private-toggle input { width:auto; margin:0; }
+.private-mark { font-size:0.75rem; }
 .badge-cursus { background:#e0e7ff; color:#3730a3; }
 .badge-enroll-active { background:#dbeafe; color:#1e40af; }
 .badge-enroll-completed { background:#dcfce7; color:#166534; }
