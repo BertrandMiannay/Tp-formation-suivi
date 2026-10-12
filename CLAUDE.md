@@ -24,6 +24,13 @@ Settings require `SECRET_KEY` unless `DEBUG=True` (dev). `DATABASE_URL` is optio
 Migrations: a single `0001_initial` per app (squashed before the first deployment); add new migrations on top from now on.
 `userManagement/0002_create_initial_admin` creates the first superuser (group `admin`) from `DJANGO_SUPERUSER_USERNAME` / `_PASSWORD` / `_EMAIL` when set and the account does not exist; skipped during `manage.py test` (`settings.TESTING`).
 
+## Git conventions
+
+- Commit messages, PR titles and PR descriptions are written in **English** (the UI and code comments stay in French).
+- Never commit directly to `main`: work on a branch, open a pull request, and merge it with **squash and merge** so that each PR is a single commit on `main` (title = PR title, body = summary of the change).
+- `main` history = one initial commit (snapshot of TP-manager at the fork) followed by one commit per merged PR. Do not rewrite `main` (no force push) unless explicitly asked. The history before the rewrite is kept in the `archive/main-before-rewrite` branch.
+- Commit messages: imperative subject line under ~72 characters, blank line, then a short bullet list of what changed and why.
+
 ## Docker / déploiement
 
 - `Dockerfile` (python:3.13-slim en deux étapes : Poetry installe les dépendances dans `/app/.venv`, seule cette venv est copiée dans l'image finale ; `collectstatic` au build, utilisateur non-root, SQLite dans le volume `/data`).
