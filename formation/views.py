@@ -149,7 +149,7 @@ def student_import(request):
 
 @club_staff_required
 def student_delete(request, pk):
-    """Supprime la fiche et tout son suivi (inscriptions, présences, compétences, exercices, notes)."""
+    """Supprime la fiche et tout son suivi (inscriptions, présences, compétences, notes)."""
     member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
     if request.method != 'POST':
         return redirect('eleve-edit', pk=pk)

@@ -6,7 +6,7 @@
 <h1>Mon suivi{% if season %} — {{ season.label }}{% endif %}</h1>
 
 {% for sheet in sheets %}
-    {% with member=sheet.member stats=sheet.stats attendances=sheet.attendances formations=sheet.formations exercises=sheet.exercises %}
+    {% with member=sheet.member stats=sheet.stats attendances=sheet.attendances formations=sheet.formations %}
     {% if sheets|length > 1 %}<h2 style="margin:2rem 0 1rem; color:#1a1a2e;">{{ member.first_name }} {{ member.last_name }}</h2>{% endif %}
 
     <h3 style="margin:1rem 0 0.75rem;">Présences</h3>
@@ -14,9 +14,6 @@
 
     <h3 style="margin:2rem 0 0.75rem;">Compétences</h3>
     {% include "suivi/_skills_progress.html" %}
-
-    <h3 style="margin:2rem 0 0.75rem;">Exercices</h3>
-    {% include "suivi/_exercise_list.html" %}
 
     <h3 style="margin:2rem 0 0.75rem;">Remarques de l'équipe encadrante</h3>
     {% for note in sheet.notes %}

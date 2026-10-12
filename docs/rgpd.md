@@ -2,7 +2,7 @@
 
 ## Contexte
 
-Tp-formation-suivi est une application web utilisée par un club de plongée pour suivre ses élèves en formation : séances, présences, compétences travaillées et validées, exercices et remarques de l'équipe encadrante. Toutes les données sont saisies directement dans l'application par l'encadrement ; aucune donnée n'est importée d'un service tiers.
+Tp-formation-suivi est une application web utilisée par un club de plongée pour suivre ses élèves en formation : séances, présences, compétences travaillées et validées et remarques de l'équipe encadrante. Toutes les données sont saisies directement dans l'application par l'encadrement ; aucune donnée n'est importée d'un service tiers.
 
 **Responsable de traitement :** Le club de plongée (à compléter : nom, adresse, contact du référent RGPD).
 
@@ -48,7 +48,6 @@ Tp-formation-suivi est une application web utilisée par un club de plongée pou
 | `Attendance` | Présence à une séance (présent / absent / excusé) + commentaire | Oui |
 | `WorkedSkill` | Compétence travaillée en séance, évaluation du jour, commentaire, auteur | Oui |
 | `MemberSkill` / `SkillEvaluation` | Statut courant et historique des évaluations, commentaire, évaluateur | Oui |
-| `Exercise` | Exercice réalisé, résultat, commentaire | Oui |
 | `StudentNote` | Remarque libre de l'encadrement | Seulement si visibilité « élève » |
 | `TrainingSession` | Séance : date, lieu, encadrants, déroulé | Non |
 
@@ -60,7 +59,7 @@ Tp-formation-suivi est une application web utilisée par un club de plongée pou
 
 | Finalité | Données | Base légale (art. 6) |
 |---|---|---|
-| Suivi pédagogique des élèves | Présences, compétences, exercices, notes | Exécution du contrat d'adhésion / formation (6.1.b) |
+| Suivi pédagogique des élèves | Présences, compétences, notes | Exécution du contrat d'adhésion / formation (6.1.b) |
 | Vérification de l'aptitude médicale | `medical_certificate_date` | Obligation réglementaire fédérale (6.1.c) |
 | Contact d'urgence | `emergency_contact_*` | Intérêt vital (6.1.d) |
 | Gestion des accès à l'application | `CustomUser` | Intérêt légitime du club (6.1.f) |

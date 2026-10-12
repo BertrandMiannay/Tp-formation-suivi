@@ -8,7 +8,7 @@ from django.urls import reverse
 from formation.models import (
     Cursus, CursusCategory, Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation,
 )
-from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
+from .models import Attendance, StudentNote, TrainingSession, WorkedSkill
 
 
 class SuiviFixtures(TestCase):
@@ -146,28 +146,23 @@ class SuiviTestCase(SuiviFixtures):
         self.assertEqual(self.client.get(reverse('suivi-sessions')).status_code, 200)
 
         resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, 'id="tab-resume"')
+        self.assertContains(resp, '<strong>0/2</strong> acquise')
         self.assertContains(resp, '1 séance')
         self.assertContains(resp, 'Vidage de masque <span class="badge badge-in_progress">')
 
-    def test_exercises_and_notes(self):
+    def test_notes(self):
         url = reverse('suivi-student-detail', args=[self.alice.pk])
-        self.client.post(url, {
-            '_action': 'add_exercise', 'date': '2026-10-07', 'name': 'Remontée 6 m',
-            'skill': self.skill_a.pk, 'result': 'partial', 'comment': '',
-        })
-        self.assertEqual(Exercise.objects.get().author, self.instructor)
         self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Privé', 'visibility': 'staff'})
         self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Bravo !', 'visibility': 'student'})
         self.assertEqual(StudentNote.objects.count(), 2)
         resp = self.client.get(url)
-        self.assertContains(resp, 'Remontée 6 m')
         self.assertContains(resp, 'Privé')
 
         # L'élève ne voit que les notes qui lui sont destinées
         self.client.force_login(self.student_user)
         resp = self.client.get(reverse('suivi-mine'))
         self.assertContains(resp, 'Bravo !')
-        self.assertContains(resp, 'Remontée 6 m')
         self.assertNotContains(resp, 'Privé')
 
         note = StudentNote.objects.get(content='Privé')

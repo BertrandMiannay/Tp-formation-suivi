@@ -110,7 +110,7 @@ class HomeView(LoginRequiredMixin, TemplateView):
             },
             {
                 'title': 'Élèves',
-                'description': 'Fiches élèves : présences, compétences, exercices, notes. Création des comptes élèves.',
+                'description': 'Fiches élèves : présences, compétences, notes. Création des comptes élèves.',
                 'url': '/suivi/eleves/',
                 'visible': user.is_club_staff,
             },
@@ -122,7 +122,7 @@ class HomeView(LoginRequiredMixin, TemplateView):
             },
             {
                 'title': 'Mon suivi',
-                'description': 'Mes présences, compétences, exercices et remarques des encadrants.',
+                'description': 'Mes présences, compétences et remarques des encadrants.',
                 'url': '/suivi/mon-suivi/',
                 'visible': hasattr(user, 'student_profile'),
             },

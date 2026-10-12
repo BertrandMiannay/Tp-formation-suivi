@@ -95,9 +95,9 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .card h2 { font-size:1.1rem; color:#1a1a2e; margin-bottom:0.75rem; }
 .muted { color:#6b7280; }
 .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.8rem; white-space:nowrap; }
-.badge-present, .badge-success, .badge-acquired { background:#dcfce7; color:#166534; }
-.badge-absent, .badge-not_done { background:#fee2e2; color:#991b1b; }
-.badge-excused, .badge-partial, .badge-in_progress { background:#fef3c7; color:#92400e; }
+.badge-present, .badge-acquired { background:#dcfce7; color:#166534; }
+.badge-absent { background:#fee2e2; color:#991b1b; }
+.badge-excused, .badge-in_progress { background:#fef3c7; color:#92400e; }
 .badge-not_acquired, .badge-none { background:#f3f4f6; color:#6b7280; }
 .badge-staff { background:#e0e7ff; color:#3730a3; }
 .badge-student { background:#dcfce7; color:#166534; }
@@ -250,3 +250,19 @@ textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px;
   padding: 1rem; font-family: monospace; font-size: 0.85rem;
   white-space: pre; overflow-x: auto; color: #374151;
 }
+
+/* ---- Vue d'ensemble de la fiche élève (suivi/student_detail.html) ---- */
+.overview-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; }
+.overview-grid .card { margin-bottom:0; }
+.ov-formation, .ov-session { padding:0.6rem 0; border-top:1px solid #eee; }
+.ov-head { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.3rem; }
+.ov-progress { display:flex; align-items:center; gap:0.75rem; font-size:0.9rem; margin-bottom:0.2rem; }
+.ov-progress .progress { flex:1; }
+.ov-more { display:inline-block; margin-top:0.75rem; font-size:0.9rem; color:#1a1a2e; }
+@media (max-width: 800px) {
+    .overview-grid { grid-template-columns:1fr; gap:1rem; }
+}
+.suivi-tabs { display:flex; gap:0.25rem; border-bottom:2px solid #e5e7eb; overflow-x:auto; scrollbar-width:none; }
+.suivi-tabs a { padding:0.5rem 0.9rem; margin-bottom:-2px; border-bottom:2px solid transparent; color:#6b7280; text-decoration:none; white-space:nowrap; font-weight:500; }
+.suivi-tabs a:hover { color:#1a1a2e; }
+.suivi-tabs a.active { color:#1a1a2e; border-bottom-color:#1a1a2e; }
