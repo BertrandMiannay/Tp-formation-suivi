@@ -1,5 +1,9 @@
 from django import forms
+import re
+
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 
@@ -103,6 +107,70 @@ class StudentForm(forms.ModelForm):
         if self.instance.user_id and others.exists():
             raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
         return email
+
+
+class StudentImportForm(forms.Form):
+    """Import de plusieurs élèves : une ligne « Nom ; Prénom ; Email » par élève (email facultatif)."""
+    MAX_LINES = 200
+
+    lines = forms.CharField(
+        label='Élèves', widget=forms.Textarea(attrs={'rows': 12, 'placeholder': 'Martin ; Alice ; alice@example.com\nDurand ; Bob'}),
+        help_text="Une ligne par élève : nom, prénom et email (facultatif), séparés par « ; », une virgule "
+                  "ou une tabulation (copier-coller depuis un tableur). Une ligne d'en-tête « Nom… » est ignorée.",
+    )
+    formation = forms.ModelChoiceField(
+        queryset=Formation.objects.none(), required=False, label='Inscrire à la formation',
+        empty_label='— Sans inscription —',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['formation'].queryset = Formation.objects.active()
+
+    def clean_lines(self):
+        """Liste de dicts {first_name, last_name, email} ; toutes les erreurs sont signalées d'un coup."""
+        rows, errors, seen_emails = [], [], set()
+        raw_lines = [(n, line.strip()) for n, line in enumerate(self.cleaned_data['lines'].splitlines(), start=1)]
+        raw_lines = [(n, line) for n, line in raw_lines if line]
+        if raw_lines and raw_lines[0][1].lower().lstrip('\ufeff').startswith('nom'):
+            raw_lines = raw_lines[1:]
+        if len(raw_lines) > self.MAX_LINES:
+            raise forms.ValidationError(f"{self.MAX_LINES} élèves au maximum par import.")
+        emails_in_use = {
+            e.lower() for e in get_user_model().objects.filter(student_profile__isnull=False)
+            .values_list('email', flat=True) if e
+        }
+        for n, line in raw_lines:
+            cells = [c.strip() for c in re.split(r'[;\t,]', line)]
+            while cells and not cells[-1]:
+                cells.pop()
+            if len(cells) not in (2, 3) or not cells[0] or not cells[1]:
+                errors.append(f"Ligne {n} : nom et prénom attendus (« {line} »).")
+                continue
+            last_name, first_name = cells[0], cells[1]
+            email = cells[2].lower() if len(cells) == 3 else ''
+            if len(first_name) > 150 or len(last_name) > 150:
+                errors.append(f"Ligne {n} : nom ou prénom trop long.")
+                continue
+            if email:
+                try:
+                    validate_email(email)
+                except ValidationError:
+                    errors.append(f"Ligne {n} : adresse email invalide (« {email} »).")
+                    continue
+                if email in emails_in_use:
+                    errors.append(f"Ligne {n} : {email} est déjà utilisée par un autre élève.")
+                    continue
+                if email in seen_emails:
+                    errors.append(f"Ligne {n} : {email} apparaît plusieurs fois.")
+                    continue
+                seen_emails.add(email)
+            rows.append({'first_name': first_name, 'last_name': last_name, 'email': email})
+        if errors:
+            raise forms.ValidationError(errors)
+        if not rows:
+            raise forms.ValidationError("Aucun élève à importer.")
+        return rows
 
 
 class FormationForm(forms.ModelForm):

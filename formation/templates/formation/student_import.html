@@ -1,0 +1,23 @@
+{% extends "suivi/base.html" %}
+
+{% block title %}Importer des élèves{% endblock %}
+
+{% block suivi_content %}
+<a href="{% url 'suivi-students' %}" class="btn btn-secondary" style="margin-bottom:1.5rem;">← Retour</a>
+<h1>Importer des élèves</h1>
+
+<form method="post" class="card" style="max-width:800px;">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="{{ form.lines.id_for_label }}">{{ form.lines.label }}</label>{{ form.lines }}{{ form.lines.errors }}
+        <p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">{{ form.lines.help_text }}</p>
+        <p class="muted" style="font-size:0.85rem;">Un email crée le compte élève (lien d'invitation affiché sur sa fiche). Si une ligne est en erreur, aucun élève n'est créé.</p>
+    </div>
+    <div class="form-group">
+        <label for="{{ form.formation.id_for_label }}">{{ form.formation.label }}</label>{{ form.formation }}{{ form.formation.errors }}
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Importer</button>
+    </div>
+</form>
+{% endblock %}

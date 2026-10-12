@@ -15,13 +15,15 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.formats import date_format
 
-from formation.forms import FormationForm, QuickStudentForm, StudentForm
+from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
 from suivi.models import TrainingSession
 from suivi.views import attendance_matrix
-from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
+from userManagement.views import (
+    admin_required, can_manage_account, club_staff_required, create_invited_user, renew_invitation,
+)
 from userManagement.models import Role
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,13 @@ def attach_account(member, email):
     member.user = user
     member.save(update_fields=['user'])
     return user
+
+
+def deletes_student_account(actor, member):
+    """Supprimer la fiche supprime aussi le compte rattaché s'il s'agit d'un compte élève ; un compte
+    encadrant / administrateur (qui suit une formation) est conservé."""
+    user = member.user if member.user_id else None
+    return user is not None and user.role == Role.STUDENT and can_manage_account(actor, user)
 
 
 @club_staff_required
@@ -103,7 +112,57 @@ def student_edit(request, pk):
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
     else:
         form = StudentForm(instance=member)
-    return render(request, 'formation/student_form.html', {'form': form, 'member': member})
+    return render(request, 'formation/student_form.html', {
+        'form': form, 'member': member, 'delete_account': deletes_student_account(request.user, member),
+    })
+
+
+@club_staff_required
+def student_import(request):
+    """Création de plusieurs élèves d'un coup (nom, prénom, email facultatif), avec inscription facultative."""
+    form = StudentImportForm(request.POST or None, initial={'formation': request.GET.get('formation')})
+    if request.method == 'POST' and form.is_valid():
+        formation = form.cleaned_data['formation']
+        invited = 0
+        with transaction.atomic():
+            members = []
+            for row in form.cleaned_data['lines']:
+                member = Member.objects.create(first_name=row['first_name'], last_name=row['last_name'])
+                if row['email'] and not attach_account(member, row['email']).is_active:
+                    invited += 1
+                if formation:
+                    Enrollment.objects.create(member=member, formation=formation)
+                members.append(member)
+        logger.info("STUDENT_IMPORT count=%s formation=%s by=%s",
+                    len(members), formation.pk if formation else None, request.user.username)
+        messages.success(request, f"{len(members)} élève(s) importé(s)" + (
+            f", inscrit(s) à « {formation} »." if formation else "."
+        ) + (
+            f" {invited} compte(s) élève créé(s) : les liens d'invitation sont sur leurs fiches."
+            if invited else ""
+        ))
+        if formation:
+            return redirect(reverse('formation-detail', args=[formation.pk]) + '#eleves')
+        return redirect(reverse('suivi-students') + '?formation=all')
+    return render(request, 'formation/student_import.html', {'form': form, 'active_tab': 'eleves'})
+
+
+@club_staff_required
+def student_delete(request, pk):
+    """Supprime la fiche et tout son suivi (inscriptions, présences, compétences, exercices, notes)."""
+    member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
+    if request.method != 'POST':
+        return redirect('eleve-edit', pk=pk)
+    user = member.user
+    delete_account = deletes_student_account(request.user, member)
+    with transaction.atomic():
+        logger.info("STUDENT_DELETE pk=%s name=%s user=%s account_deleted=%s by=%s",
+                    member.pk, member, user.pk if user else None, delete_account, request.user.username)
+        member.delete()
+        if delete_account:
+            user.delete()
+    messages.success(request, f"Fiche de {member} supprimée.")
+    return redirect('suivi-students')
 
 
 @club_staff_required

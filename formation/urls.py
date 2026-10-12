@@ -24,7 +24,9 @@ formation_urlpatterns = [
 # Élèves : /eleves/
 student_urlpatterns = [
     path('nouveau/', views.student_create, name='eleve-create'),
+    path('importer/', views.student_import, name='eleve-import'),
     path('<int:pk>/modifier/', views.student_edit, name='eleve-edit'),
+    path('<int:pk>/supprimer/', views.student_delete, name='eleve-delete'),
     path('<int:pk>/evaluation/', views.evaluation, name='eleve-evaluation'),
     path('<int:pk>/evaluation/<int:cursus_pk>/', views.evaluation_save, name='eleve-evaluation-save'),
     path('<int:pk>/evaluation/<int:cursus_pk>/export/', views.evaluation_export, name='eleve-evaluation-export'),
