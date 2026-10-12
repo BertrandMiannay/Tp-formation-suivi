@@ -76,7 +76,7 @@
                         <label class="muted"><input type="radio" name="att_{{ row.member.pk }}" value="" {% if not row.attendance %}checked{% endif %}> <span class="hide-sm">Non renseigné</span><span class="show-sm">?</span></label>
                     </div>
                 </td>
-                <td><input type="text" name="att_{{ row.member.pk }}_comment" value="{{ row.attendance.comment|default:'' }}" placeholder="Retard, raison de l'absence…" style="font-size:0.85rem; padding:0.3rem;"></td>
+                <td><div class="comment-field"><input type="text" name="att_{{ row.member.pk }}_comment" value="{{ row.attendance.comment|default:'' }}" placeholder="Retard, raison de l'absence…" style="font-size:0.85rem; padding:0.3rem;"><label class="private-toggle" title="Coché : commentaire réservé à l'équipe encadrante (non affiché à l'élève)"><input type="checkbox" name="att_{{ row.member.pk }}_private" value="1" {% if not row.attendance or row.attendance.comment_private %}checked{% endif %}> 🔒 Équipe</label></div></td>
             </tr>
         {% endfor %}
         </tbody>
@@ -143,7 +143,7 @@
                                         {% endfor %}
                                     </select>
                                 </td>
-                                <td class="ws-cell-comment"><input type="text" name="ws_{{ sk.pk }}_comment" value="{{ sk.comment }}" placeholder="Commentaire" style="font-size:0.85rem; padding:0.25rem;">{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
+                                <td class="ws-cell-comment"><div class="comment-field"><input type="text" name="ws_{{ sk.pk }}_comment" value="{{ sk.comment }}" placeholder="Commentaire" style="font-size:0.85rem; padding:0.25rem;"><label class="private-toggle" title="Coché : commentaire réservé à l'équipe encadrante (non affiché à l'élève)"><input type="checkbox" name="ws_{{ sk.pk }}_private" value="1" {% if sk.comment_private %}checked{% endif %}> 🔒 Équipe</label></div>{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
                             </tr>
                             {% endfor %}
                             </tbody>

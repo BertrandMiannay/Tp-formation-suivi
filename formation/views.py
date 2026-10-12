@@ -184,6 +184,7 @@ def evaluation(request, pk):
             'status': ev.status,
             'status_display': ev.get_status_display(),
             'comment': ev.comment,
+            'comment_private': ev.comment_private,
         })
     formations = []
     for cursus in formations_qs:
@@ -601,6 +602,7 @@ def evaluation_save(request, pk, cursus_pk):
         if status not in valid_statuses:
             status = MemberSkill.SkillStatus.NOT_ACQUIRED
         comment = request.POST.get(f'skill_{skill.pk}_comment', '').strip()
+        private = bool(comment) and bool(request.POST.get(f'skill_{skill.pk}_private'))
         MemberSkill.objects.update_or_create(
             member=member, skill=skill,
             defaults={'status': status},
@@ -608,7 +610,7 @@ def evaluation_save(request, pk, cursus_pk):
         if comment or status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
             SkillEvaluation.objects.create(
                 member=member, skill=skill,
-                date=today, status=status, comment=comment,
+                date=today, status=status, comment=comment, comment_private=private,
                 author=request.user,
             )
     return redirect('eleve-evaluation', pk=pk)
@@ -672,7 +674,9 @@ def evaluation_export(request, pk, cursus_pk):
                 if ev.author:
                     date_str += f" · {escape(ev.author.get_full_name() or ev.author.username)}"
                 line = f"<font color='#9ca3af'>{date_str}</font>"
-                comment_lines.append(f"{line} {escape(ev.comment)}" if ev.comment else line)
+                # Document remis à l'élève : les commentaires réservés à l'équipe n'y figurent pas.
+                shown = ev.comment if not ev.comment_private else ''
+                comment_lines.append(f"{line} {escape(shown)}" if shown else line)
             comment_para = Paragraph('<br/>'.join(comment_lines), small_grey) if comment_lines else ''
 
             table_data.append([
