@@ -1,0 +1,11 @@
+{% comment %}
+Commentaire visible par l'élève + note réservée à l'équipe (dépliée au clic sur 🔒 si vide).
+Paramètres : prefix, pk (noms `<prefix>_<pk>_comment` / `<prefix>_<pk>_staff_comment`), comment, staff_comment, placeholder.
+{% endcomment %}
+<div class="comment-field">
+    <input type="text" name="{{ prefix }}_{{ pk }}_comment" value="{{ comment|default:'' }}" placeholder="{{ placeholder|default:'Commentaire' }} (visible par l'élève)">
+    <button type="button" class="staff-toggle" title="Ajouter une note réservée à l'équipe encadrante" {% if staff_comment %}hidden{% endif %}
+            onclick="const i = this.nextElementSibling; i.hidden = false; i.focus(); this.hidden = true;">🔒</button>
+    <input type="text" class="staff-comment" name="{{ prefix }}_{{ pk }}_staff_comment" value="{{ staff_comment|default:'' }}"
+           placeholder="🔒 Note équipe (non visible par l'élève)" title="Note réservée à l'équipe encadrante" {% if not staff_comment %}hidden{% endif %}>
+</div>

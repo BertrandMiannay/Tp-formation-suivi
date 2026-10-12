@@ -156,7 +156,7 @@ def _skill_tree(skills, worked, global_status):
             'worked': ws is not None,
             'session_status': ws.status if ws else '',
             'comment': ws.comment if ws else '',
-            'comment_private': ws.comment_private if ws else False,
+            'staff_comment': ws.staff_comment if ws else '',
             'author': ws.author if ws else None,
             'global_status': status,
             'global_status_display': MemberSkill.SkillStatus(status).label,
@@ -180,7 +180,7 @@ def _attach_worked_skills(member, attendances):
 def _tracking_sheet(member, season, for_student=False):
     """Partie commune de la fiche élève (staff) et de « Mon suivi » : présences de la saison avec
     les compétences travaillées, statistiques et progression par cursus.
-    `for_student` : les commentaires réservés à l'équipe sont effacés (objets non enregistrés)."""
+    `for_student` : les notes équipe sont effacées (objets non enregistrés)."""
     attendances = member.attendances.select_related('session')
     if season:
         attendances = attendances.filter(session__season=season)
@@ -188,13 +188,14 @@ def _tracking_sheet(member, season, for_student=False):
     formations = _skills_progress(member)
     if for_student:
         for a in attendances:
-            if a.comment_private:
-                a.comment = ''
+            a.staff_comment = ''
+            for ws in a.worked:
+                ws.staff_comment = ''
         for f in formations:
             for cat in f['categories']:
                 for s in cat['skills']:
-                    if s['last_eval'] and s['last_eval'].comment_private:
-                        s['last_eval'].comment = ''
+                    if s['last_eval']:
+                        s['last_eval'].staff_comment = ''
     return {
         'attendances': attendances,
         'stats': _attendance_stats(attendances),
@@ -271,11 +272,11 @@ def session_detail(request, pk):
                 for member in session.roster():
                     status = request.POST.get(f'att_{member.pk}', '')
                     comment = request.POST.get(f'att_{member.pk}_comment', '').strip()[:255]
-                    private = bool(request.POST.get(f'att_{member.pk}_private'))
+                    staff_comment = request.POST.get(f'att_{member.pk}_staff_comment', '').strip()[:255]
                     if status in valid:
                         Attendance.objects.update_or_create(
                             session=session, member=member,
-                            defaults={'status': status, 'comment': comment, 'comment_private': private},
+                            defaults={'status': status, 'comment': comment, 'staff_comment': staff_comment},
                         )
                     else:
                         Attendance.objects.filter(session=session, member=member).delete()
@@ -320,38 +321,29 @@ def session_detail(request, pk):
                     if status not in valid:
                         status = ''
                     comment = request.POST.get(f'{prefix}_comment', '').strip()[:255]
-                    private = bool(request.POST.get(f'{prefix}_private'))
+                    staff_comment = request.POST.get(f'{prefix}_staff_comment', '').strip()[:255]
                     worked = bool(request.POST.get(prefix)) or bool(status)
                     if not worked:
                         if skill.pk in existing:
                             existing[skill.pk].delete()
                         continue
                     ws = existing.get(skill.pk)
-                    if ws and ws.status == status and ws.comment == comment:
-                        if ws.comment_private != private:
-                            # Seule la visibilité change : pas de nouvelle évaluation, on suit
-                            # celle déjà historisée pour cette séance.
-                            ws.comment_private = private
-                            ws.save(update_fields=['comment_private'])
-                            if comment:
-                                SkillEvaluation.objects.filter(
-                                    member=member, skill=skill, date=session.date, comment=comment,
-                                ).update(comment_private=private)
+                    if ws and (ws.status, ws.comment, ws.staff_comment) == (status, comment, staff_comment):
                         continue
                     WorkedSkill.objects.update_or_create(
                         session=session, member=member, skill=skill,
-                        defaults={'status': status, 'comment': comment, 'comment_private': private,
+                        defaults={'status': status, 'comment': comment, 'staff_comment': staff_comment,
                                   'author': request.user},
                     )
                     old = current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED)
-                    if status and (status != old or comment):
+                    if status and (status != old or comment or staff_comment):
                         MemberSkill.objects.update_or_create(
                             member=member, skill=skill, defaults={'status': status},
                         )
                         SkillEvaluation.objects.create(
                             member=member, skill=skill, date=session.date, status=status,
                             comment=comment or f"Séance du {session.date:%d/%m/%Y}",
-                            comment_private=private and bool(comment),
+                            staff_comment=staff_comment,
                             author=request.user,
                         )
                         evaluated += 1
