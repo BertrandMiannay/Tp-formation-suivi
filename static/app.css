@@ -99,8 +99,10 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .card h2 { font-size:1.1rem; color:#1a1a2e; margin-bottom:0.75rem; }
 .muted { color:#6b7280; }
 .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.8rem; white-space:nowrap; }
-.badge-present, .badge-acquired { background:#dcfce7; color:#166534; }
-.badge-absent { background:#fee2e2; color:#991b1b; }
+/* Présences : bleu / orange (lisibles par les daltoniens), doublés d'une forme ou d'un texte. */
+.badge-present { background:#dbeafe; color:#1e3a8a; }
+.badge-absent { background:#ffedd5; color:#9a3412; }
+.badge-acquired { background:#dcfce7; color:#166534; }
 .badge-in_progress { background:#fef3c7; color:#92400e; }
 .badge-not_acquired, .badge-none { background:#f3f4f6; color:#6b7280; }
 .badge-staff { background:#e0e7ff; color:#3730a3; }
@@ -134,8 +136,8 @@ textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px;
 .radio-group { display:flex; gap:0.4rem; flex-wrap:wrap; }
 .radio-group label { display:flex; align-items:center; gap:0.3rem; font-weight:normal; margin:0; padding:0.25rem 0.6rem; border:1px solid #d1d5db; border-radius:999px; cursor:pointer; font-size:0.9rem; background:white; }
 .radio-group label:has(input:checked) { border-color:#1a1a2e; background:#eef0ff; }
-.radio-group label.att-present:has(input:checked) { background:#dcfce7; border-color:#16a34a; color:#166534; }
-.radio-group label.att-absent:has(input:checked) { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
+.radio-group label.att-present:has(input:checked) { background:#dbeafe; border-color:#0072b2; color:#1e3a8a; }
+.radio-group label.att-absent:has(input:checked) { background:#ffedd5; border-color:#e69f00; color:#9a3412; }
 .errorlist { color:#b91c1c; font-size:0.85rem; list-style:none; }
 /* Barre d'enregistrement collée en bas de l'écran pendant le défilement d'un long formulaire. */
 .sticky-actions { position:sticky; bottom:var(--tabbar-h, 0px); z-index:5; background:white; padding:0.75rem 0; margin-top:0.75rem; border-top:1px solid #eee; }
@@ -158,16 +160,18 @@ textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px;
 .att-matrix table { width:auto; min-width:100%; }
 .att-matrix th, .att-matrix td { padding:0.4rem 0.5rem; text-align:center; white-space:nowrap; font-size:0.85rem; }
 .att-matrix th:first-child, .att-matrix td:first-child { text-align:left; position:sticky; left:0; background:white; }
-.cell-present { background:#dcfce7; color:#166534; }
-.cell-absent { background:#fee2e2; color:#991b1b; }
+.cell-present { background:#dbeafe; color:#1e3a8a; font-weight:600; }
+.cell-absent { background:#ffedd5; color:#9a3412; font-weight:600; }
 /* Mobile : une carte par élève, une pastille par séance. */
 .att-cards { display:none; }
 .att-card { display:block; background:white; border:1px solid #eee; border-radius:6px; padding:0.6rem 0.75rem; margin-bottom:0.5rem; text-decoration:none; color:inherit; }
 .att-card-head { display:flex; justify-content:space-between; gap:0.5rem; margin-bottom:0.4rem; }
 .att-dots { display:flex; flex-wrap:wrap; gap:3px; }
-.att-dots span { width:14px; height:14px; border-radius:3px; background:#f3f4f6; }
-.att-dots .cell-present { background:#16a34a; }
-.att-dots .cell-absent { background:#dc2626; }
+/* Pastille : présent = carré plein bleu, absent = carré vide à contour orange, non renseigné = tiret gris. */
+.att-dots span, .att-swatch { display:inline-block; box-sizing:border-box; width:14px; height:14px; border-radius:3px;
+    background:linear-gradient(#9ca3af, #9ca3af) center / 8px 2px no-repeat; vertical-align:-2px; }
+.att-dots .cell-present, .att-swatch.cell-present { background:#0072b2; }
+.att-dots .cell-absent, .att-swatch.cell-absent { background:white; border:2.5px solid #e69f00; }
 @media (max-width: 640px) {
     .att-matrix { display:none; }
     .att-cards { display:block; }

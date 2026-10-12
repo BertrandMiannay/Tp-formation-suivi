@@ -65,7 +65,7 @@
             <div class="att-dots" style="margin-bottom:0.4rem;">
                 {% for a in attendances reversed %}<span class="cell-{{ a.status }}" title="{{ a.session.date|date:'d/m' }} : {{ a.get_status_display }}"></span>{% endfor %}
             </div>
-            <p class="muted" style="font-size:0.8rem; margin-bottom:0.75rem;"><span style="color:#16a34a;">■</span> présent · <span style="color:#dc2626;">■</span> absent, de la plus ancienne à la plus récente</p>
+            <p class="muted" style="font-size:0.8rem; margin-bottom:0.75rem;"><span class="att-swatch cell-present"></span> présent · <span class="att-swatch cell-absent"></span> absent, de la plus ancienne à la plus récente</p>
             {% for a in attendances|slice:":5" %}
             <div class="ov-session">
                 <div style="display:flex; justify-content:space-between; gap:0.5rem;">
