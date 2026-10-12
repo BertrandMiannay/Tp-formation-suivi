@@ -18,8 +18,11 @@ class Command(BaseCommand):
         parser.add_argument('--label', default='quotidienne', help="Étiquette ajoutée au nom du fichier.")
         parser.add_argument('--keep', type=int, default=14, help="Nombre de copies conservées pour cette étiquette.")
         parser.add_argument('--dir', help="Dossier de destination (sinon BACKUP_DIR).")
+        parser.add_argument('--daily', action='store_true',
+                            help="Ne rien faire si une copie de cette étiquette existe déjà pour aujourd'hui "
+                                 "(appel fréquent, ex. update.sh toutes les 5 min).")
 
-    def handle(self, *args, label, keep, dir, **options):
+    def handle(self, *args, label, keep, dir, daily, **options):
         db = settings.DATABASES['default']
         if db['ENGINE'] != 'django.db.backends.sqlite3':
             raise CommandError("backup_db ne gère que SQLite (utiliser l'outil de sauvegarde du serveur de base).")
@@ -33,7 +36,10 @@ class Command(BaseCommand):
 
         target_dir = Path(dir or os.environ.get('BACKUP_DIR') or source.parent / 'backups')
         target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f"db-{datetime.now():%Y%m%d-%H%M%S}-{label}.sqlite3"
+        now = datetime.now()
+        if daily and any(target_dir.glob(f"db-{now:%Y%m%d}-*-{label}.sqlite3")):
+            return
+        target = target_dir / f"db-{now:%Y%m%d-%H%M%S}-{label}.sqlite3"
 
         src = sqlite3.connect(source)
         dst = sqlite3.connect(target)

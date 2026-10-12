@@ -35,10 +35,10 @@ Migrations: a single `0001_initial` per app (squashed before the first deploymen
 ## Docker / déploiement
 
 - `Dockerfile` (python:3.13-slim en deux étapes : Poetry installe les dépendances dans `/app/.venv`, seule cette venv est copiée dans l'image finale ; `collectstatic` au build, utilisateur non-root, SQLite dans le volume `/data`).
-- `docker/entrypoint.sh` : copie de la base (`backup_db --label avant-migration`) s'il y a des migrations à appliquer, `migrate` à chaque démarrage, puis gunicorn. `python manage.py backup_db` : copie à chaud de la base SQLite dans `BACKUP_DIR` (défaut `/data/backups`), rotation `--keep` ; cron quotidien sur l'hôte (`deploy/DEPLOY.md`).
+- `docker/entrypoint.sh` : copie de la base (`backup_db --label avant-migration`) s'il y a des migrations à appliquer, `migrate` à chaque démarrage, puis gunicorn. `python manage.py backup_db` : copie à chaud de la base SQLite dans `BACKUP_DIR` (défaut `/data/backups`), rotation `--keep` ; `--daily` (une copie par jour au plus) est lancé par `deploy/update.sh` à chaque passage du cron.
 - `docker-compose.yml` : service `web`, image `ghcr.io/bertrandmiannay/tp-formation-suivi:${IMAGE_TAG:-latest}`, port `127.0.0.1:${APP_PORT:-8000}`, nginx sur l'hôte (`deploy/nginx.conf`).
 - `.github/workflows/docker-publish.yml` (manuel) publie `latest` + `sha-<commit>` et passe `APP_VERSION` (n° d'exécution, commit court, date) en build-arg, affichés sur la page Utilisateurs (admin ; « dev » en local) ; `ci.yml` : tests, check migrations, build image.
-- Production : https://botouraineplongee.ddns.net (remplace helloAssoManager sur le même serveur). `HEALTHCHECK` sur `/health/`, mise à jour automatique `deploy/update.sh` (cron hôte toutes les 5 min : pull, redémarrage si l'image a changé), SQLite en WAL.
+- Production : https://botouraineplongee.ddns.net (remplace helloAssoManager sur le même serveur). `HEALTHCHECK` sur `/health/`, mise à jour automatique `deploy/update.sh` (cron hôte toutes les 5 min : copie quotidienne de la base, pull, redémarrage si l'image a changé), SQLite en WAL.
 - Mise à jour serveur : `docker compose pull && docker compose up -d`. Voir `deploy/DEPLOY.md`.
 
 ## Architecture

@@ -261,3 +261,19 @@ class BackupDbTests(TestCase):
             with sqlite3.connect(backups / copies[-1]) as con:
                 self.assertEqual(con.execute('select x from t').fetchall(), [('ok',)])
             con.close()
+
+    def test_daily_backup_runs_once_a_day(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from django.conf import settings
+        from django.core.management import call_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / 'db.sqlite3'
+            sqlite3.connect(source).execute('create table t (x)').connection.close()
+            backups = Path(tmp) / 'backups'
+            with mock.patch.dict(settings.DATABASES['default'], NAME=str(source)):
+                for _ in range(2):
+                    call_command('backup_db', '--daily', '--dir', str(backups), stdout=mock.Mock())
+            self.assertEqual(len(list(backups.iterdir())), 1)

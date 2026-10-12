@@ -129,10 +129,9 @@ Elle survit aux mises à jour et aux `docker compose down` (mais pas à `down -v
 
 - **Avant chaque migration** : le conteneur fait lui-même une copie `…-avant-migration.sqlite3` (5 conservées)
   quand une nouvelle image apporte des migrations.
-- **Chaque nuit** : `crontab -e` sur l'hôte, puis
-  ```cron
-  17 3 * * * cd ~/tp-formation-suivi && docker compose exec -T web python manage.py backup_db >> backup.log 2>&1
-  ```
+- **Chaque jour** : `update.sh` (cron toutes les 5 min, voir « Après la bascule ») lance
+  `backup_db --daily`, qui fait une copie `…-quotidienne.sqlite3` au premier passage de la journée
+  (14 conservées) ; un échec est noté dans `update.log` sans bloquer la mise à jour.
 - **Hors du serveur** : les copies restent dans le volume Docker, sur le même disque. Les rapatrier régulièrement
   (données personnelles d'élèves : stockage chiffré), par exemple depuis un autre poste :
   ```bash
