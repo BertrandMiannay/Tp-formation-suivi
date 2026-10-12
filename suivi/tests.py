@@ -61,6 +61,20 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(resp, 'Alice')
         self.assertNotContains(resp, 'name="att_%d"' % self.carol.pk)
 
+    def test_session_without_season_attached_when_season_activated(self):
+        Season.objects.update(current=False)
+        session = self._create_session()
+        self.assertIsNone(session.season)
+        self.assertContains(self.client.get(reverse('suivi-sessions')), 'Piscine')
+
+        admin = get_user_model().objects.create_user('admin2', 'admin2@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        self.client.force_login(admin)
+        self.client.post(reverse('saison-set-current', args=[self.season.pk]))
+        session.refresh_from_db()
+        self.assertEqual(session.season, self.season)
+        self.assertContains(self.client.get(reverse('suivi-sessions')), 'Piscine')
+
     def test_attendance_and_worked_skills_per_student(self):
         session = self._create_session()
         url = reverse('suivi-session-detail', args=[session.pk])
