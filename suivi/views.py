@@ -12,8 +12,8 @@ from django.utils import timezone
 from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation
 from formation.forms import QuickStudentForm
 from userManagement.views import can_reset_password, club_staff_required, invite_url_for
-from .forms import ExerciseForm, StudentNoteForm, TrainingSessionForm
-from .models import Attendance, Exercise, StudentNote, TrainingSession, WorkedSkill
+from .forms import StudentNoteForm, TrainingSessionForm
+from .models import Attendance, StudentNote, TrainingSession, WorkedSkill
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,11 @@ def _skills_progress(member):
                 })
             categories.append({'name': category.name, 'skills': skills})
         counts['acquired_pct'] = round(100 * counts['acquired'] / counts['total']) if counts['total'] else 0
+        evals = [s['last_eval'] for c in categories for s in c['skills'] if s['last_eval']]
         result.append({
             'pk': cursus.pk, 'name': formation.name, 'cursus_name': cursus.name,
             'enrollment': enrollment, 'categories': categories, 'counts': counts,
+            'last_eval_date': max((ev.date for ev in evals), default=None),
         })
     return result
 
@@ -500,29 +502,13 @@ def student_list(request):
 @club_staff_required
 def student_detail(request, pk):
     member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
-    exercise_form = ExerciseForm(member=member, initial={'date': timezone.localdate()})
     note_form = StudentNoteForm(member=member, initial={'date': timezone.localdate()})
     open_form = None
 
     if request.method == 'POST':
         action = request.POST.get('_action')
 
-        if action == 'add_exercise':
-            exercise_form = ExerciseForm(request.POST, member=member)
-            if exercise_form.is_valid():
-                ex = exercise_form.save(commit=False)
-                ex.member = member
-                ex.author = request.user
-                ex.save()
-                messages.success(request, "Exercice ajouté.")
-                return redirect(reverse('suivi-student-detail', args=[pk]) + '#exercices')
-            open_form = 'exercise'
-
-        elif action == 'delete_exercise':
-            Exercise.objects.filter(pk=request.POST.get('exercise_pk'), member=member).delete()
-            return redirect(reverse('suivi-student-detail', args=[pk]) + '#exercices')
-
-        elif action == 'add_note':
+        if action == 'add_note':
             note_form = StudentNoteForm(request.POST, member=member)
             if note_form.is_valid():
                 note = note_form.save(commit=False)
@@ -552,15 +538,15 @@ def student_detail(request, pk):
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
 
     season = _current_season()
+    sheet = _tracking_sheet(member, season)
     return render(request, 'suivi/student_detail.html', {
         'member': member,
         'enrollments': member.enrollments.select_related('formation__cursus'),
         'enrollable_formations': Formation.objects.active()
                                  .exclude(enrollments__member=member).order_by('name'),
-        **_tracking_sheet(member, season),
-        'exercises': member.exercises.select_related('skill', 'session', 'author'),
+        **sheet,
+        'last_present': next((a.session.date for a in sheet['attendances'] if a.status == Attendance.Status.PRESENT), None),
         'notes': member.student_notes.select_related('session', 'author'),
-        'exercise_form': exercise_form,
         'note_form': note_form,
         'open_form': open_form,
         'invite_url': invite_url_for(request, member.user) if member.user_id and not member.user.is_active else None,
@@ -584,7 +570,6 @@ def my_tracking(request):
         sheets.append({
             'member': member,
             **_tracking_sheet(member, season),
-            'exercises': member.exercises.select_related('skill', 'session'),
             'notes': member.student_notes.filter(visibility=StudentNote.Visibility.STUDENT).select_related('session', 'author'),
         })
     return render(request, 'suivi/my_tracking.html', {

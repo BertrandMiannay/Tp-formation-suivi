@@ -86,33 +86,6 @@ class WorkedSkill(models.Model):
         return f"{self.member} — {self.skill} ({self.session.date:%d/%m/%Y})"
 
 
-class Exercise(models.Model):
-    """Exercice réalisé par un élève (lors d'une séance ou non)."""
-
-    class Result(models.TextChoices):
-        NOT_DONE = 'not_done', 'À refaire'
-        PARTIAL  = 'partial',  'Partiellement réussi'
-        SUCCESS  = 'success',  'Réussi'
-
-    member      = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='exercises')
-    session     = models.ForeignKey(TrainingSession, null=True, blank=True, on_delete=models.SET_NULL, related_name='exercises')
-    skill       = models.ForeignKey(Skill, null=True, blank=True, on_delete=models.SET_NULL, related_name='exercises')
-    date        = models.DateField()
-    name        = models.CharField(max_length=200)
-    result      = models.CharField(max_length=20, choices=Result.choices, default=Result.SUCCESS)
-    comment     = models.TextField(blank=True)
-    author      = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
-    created_at  = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name        = 'Exercice'
-        verbose_name_plural = 'Exercices'
-        ordering            = ['-date', '-pk']
-
-    def __str__(self):
-        return f"{self.member} — {self.name} ({self.date:%d/%m/%Y})"
-
-
 class StudentNote(models.Model):
     class Visibility(models.TextChoices):
         STAFF   = 'staff',   'Équipe encadrante uniquement'

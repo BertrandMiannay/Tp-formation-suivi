@@ -1,7 +1,7 @@
 # Tp-formation-suivi
 
 Suivi des élèves en formation plongée : séances hebdomadaires, présences, compétences travaillées
-et validées par élève, exercices, notes (équipe encadrante ou visibles par l'élève).
+et validées par élève, notes (équipe encadrante ou visibles par l'élève).
 
 Issu de [TP-manager](https://github.com/BertrandMiannay/TP-manager) ; les élèves sont créés directement dans l'application.
 
@@ -32,8 +32,8 @@ Puis :
 - **Appel** : présent / absent / absent excusé, avec commentaire.
 - **Compétences** : saisies par élève et par séance (travaillée, évaluation du jour, commentaire).
   Une évaluation met à jour le statut de l'élève et est historisée avec son auteur.
-- **Exercices et notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
-- **Mon suivi** (consultation uniquement) : l'élève connecté voit ses formations, présences, compétences, exercices et les notes qui lui sont destinées.
+- **Notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
+- **Mon suivi** (consultation uniquement) : l'élève connecté voit ses formations, présences, compétences et les notes qui lui sont destinées.
 - **Export PDF** de l'évaluation par cursus.
 - **Vue mobile** : menu repliable, tableaux affichés en cartes, appel avec gros boutons présent / absent /
   excusé et bouton d'enregistrement collé en bas d'écran, saisie des compétences adaptée au tactile

@@ -21,12 +21,70 @@
 </div>
 
 <div class="suivi-tabs" id="student-tabs" style="margin-bottom:1.5rem;">
-    <a href="#infos" data-tab="infos">Informations</a>
+    <a href="#resume" data-tab="resume">Vue d'ensemble</a>
     <a href="#presences" data-tab="presences">Présences</a>
     <a href="#competences" data-tab="competences">Compétences</a>
-    <a href="#exercices" data-tab="exercices">Exercices ({{ exercises|length }})</a>
     <a href="#notes" data-tab="notes">Notes ({{ notes|length }})</a>
+    <a href="#infos" data-tab="infos">Informations</a>
 </div>
+
+<section id="tab-resume" class="student-tab">
+    <div class="stats">
+        <div class="stat"><div class="value">{% if stats.rate is not None %}{{ stats.rate }} %{% else %}—{% endif %}</div><div class="label">Assiduité</div></div>
+        <div class="stat"><div class="value">{{ stats.present }}</div><div class="label">Présences</div></div>
+        <div class="stat"><div class="value">{{ stats.absent|add:stats.excused }}</div><div class="label">Absences{% if stats.excused %} (dont {{ stats.excused }} excusée{{ stats.excused|pluralize }}){% endif %}</div></div>
+        <div class="stat"><div class="value">{{ last_present|date:"d/m"|default:"—" }}</div><div class="label">Dernière présence</div></div>
+    </div>
+
+    <div class="overview-grid">
+        <div class="card">
+            <h2>Formations</h2>
+            {% for f in formations %}
+            <div class="ov-formation">
+                <div class="ov-head">
+                    <a href="{% url 'formation-detail' f.enrollment.formation.pk %}" style="color:#1a1a2e; font-weight:600;">{{ f.name }}</a>
+                    <span class="badge badge-enroll-{{ f.enrollment.status }}">{{ f.enrollment.get_status_display }}</span>
+                </div>
+                <div class="ov-progress">
+                    <span class="progress"><div style="width:{{ f.counts.acquired_pct }}%;"></div></span>
+                    <span><strong>{{ f.counts.acquired }}/{{ f.counts.total }}</strong> acquise{{ f.counts.acquired|pluralize }}</span>
+                </div>
+                <div class="muted" style="font-size:0.85rem;">
+                    {{ f.counts.in_progress }} en cours · {{ f.counts.worked }}/{{ f.counts.total }} travaillée{{ f.counts.worked|pluralize }}{% if f.last_eval_date %} · dernière évaluation le {{ f.last_eval_date|date:"d/m/Y" }}{% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <p class="muted">Inscrit à aucune formation.</p>
+            {% endfor %}
+            {% if formations %}<a href="#competences" data-tab="competences" class="ov-more">Détail des compétences ▸</a>{% endif %}
+        </div>
+
+        <div class="card">
+            <h2>Présences{% if season %} — {{ season.label }}{% endif %}</h2>
+            {% if attendances %}
+            <div class="att-dots" style="margin-bottom:0.4rem;">
+                {% for a in attendances reversed %}<span class="cell-{{ a.status }}" title="{{ a.session.date|date:'d/m' }} : {{ a.get_status_display }}"></span>{% endfor %}
+            </div>
+            <p class="muted" style="font-size:0.8rem; margin-bottom:0.75rem;"><span style="color:#16a34a;">■</span> présent · <span style="color:#dc2626;">■</span> absent · <span style="color:#d97706;">■</span> excusé, de la plus ancienne à la plus récente</p>
+            {% for a in attendances|slice:":5" %}
+            <div class="ov-session">
+                <div style="display:flex; justify-content:space-between; gap:0.5rem;">
+                    <span><a href="{% url 'suivi-session-detail' a.session.pk %}" style="color:#1a1a2e; font-weight:500;">{{ a.session.date|date:"d/m/Y" }}</a>
+                        {% if a.session.title %}<span class="muted">{{ a.session.title }}</span>{% endif %}</span>
+                    <span class="badge badge-{{ a.status }}">{{ a.get_status_display }}</span>
+                </div>
+                {% if a.worked %}
+                <div class="muted" style="font-size:0.85rem;">{% for ws in a.worked %}{{ ws.skill.name }}{% if ws.status %} <span class="badge badge-{{ ws.status }}">{{ ws.get_status_display }}</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% if attendances|length > 5 %}<a href="#presences" data-tab="presences" class="ov-more">Voir les {{ attendances|length }} séances ▸</a>{% endif %}
+            {% else %}
+            <p class="muted">Aucune présence enregistrée pour la saison.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
 
 <section id="tab-infos" class="student-tab">
     {% if invite_url %}
@@ -95,27 +153,6 @@
     {% include "suivi/_skills_progress.html" %}
 </section>
 
-<section id="tab-exercices" class="student-tab">
-    <details class="card" {% if open_form == 'exercise' %}open{% endif %}>
-        <summary style="cursor:pointer; font-weight:600; color:#1a1a2e;">+ Ajouter un exercice</summary>
-        <form method="post" style="margin-top:1rem;">
-            {% csrf_token %}
-            <input type="hidden" name="_action" value="add_exercise">
-            {{ exercise_form.non_field_errors }}
-            <div class="grid-2">
-                {% for field in exercise_form %}
-                <div class="form-group" {% if field.name == 'comment' %}style="grid-column:1/-1;"{% endif %}>
-                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}{{ field.errors }}
-                </div>
-                {% endfor %}
-            </div>
-            <button type="submit" class="btn btn-primary">Ajouter</button>
-        </form>
-    </details>
-    {% include "suivi/_exercise_list.html" %}
-</section>
-
 <section id="tab-notes" class="student-tab">
     <details class="card" {% if open_form == 'note' %}open{% endif %}>
         <summary style="cursor:pointer; font-weight:600; color:#1a1a2e;">+ Ajouter une note</summary>
@@ -165,19 +202,20 @@
 
 <script>
 (function () {
-    const tabs = ['infos', 'presences', 'competences', 'exercices', 'notes'];
+    const tabs = ['resume', 'presences', 'competences', 'notes', 'infos'];
     function show(name) {
-        if (!tabs.includes(name)) name = 'presences';
+        if (!tabs.includes(name)) name = 'resume';
         tabs.forEach(function (t) {
             document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
             document.querySelector('#student-tabs a[data-tab="' + t + '"]').classList.toggle('active', t === name);
         });
     }
-    document.querySelectorAll('#student-tabs a').forEach(function (a) {
+    document.querySelectorAll('a[data-tab]').forEach(function (a) {
         a.addEventListener('click', function (e) {
             e.preventDefault();
             history.replaceState(null, '', '#' + this.dataset.tab);
             show(this.dataset.tab);
+            if (!this.closest('#student-tabs')) document.getElementById('student-tabs').scrollIntoView();
         });
     });
     show(window.location.hash.slice(1));
