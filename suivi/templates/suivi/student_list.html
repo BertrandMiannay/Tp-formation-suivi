@@ -14,6 +14,7 @@
             {% if view == 'liste' %}<option value="all" {% if show_all %}selected{% endif %}>Tous les élèves</option>{% endif %}
         </select>
     </form>
+    <a href="{% url 'eleve-import' %}" class="btn btn-secondary">Importer</a>
     <a href="{% url 'eleve-create' %}" class="btn btn-primary">+ Nouvel élève</a>
     </div>
 </div>

@@ -467,3 +467,54 @@ class StudentFromAccountTests(SuiviFixtures):
             'account': self.student_user.pk, 'first_name': 'Alice', 'last_name': 'Bis'})
         self.assertIn('account', resp.context['form'].errors)
         self.assertFalse(Member.objects.filter(last_name='Bis').exists())
+
+
+class StudentImportDeleteTests(SuiviFixtures):
+    def test_import_students_with_enrollment_and_accounts(self):
+        resp = self.client.post(reverse('eleve-import'), {
+            'lines': "Nom;Prénom;Email\nLeroy;Emma;Emma@Example.com\nRoux\tHugo\n\nBlanc, Inès, ",
+            'formation': self.formation.pk,
+        })
+        self.assertRedirects(resp, reverse('formation-detail', args=[self.formation.pk]) + '#eleves',
+                             fetch_redirect_response=False)
+        emma = Member.objects.get(first_name='Emma', last_name='Leroy')
+        self.assertEqual(emma.email, 'emma@example.com')
+        self.assertFalse(emma.user.is_active)
+        self.assertTrue(emma.user.groups.filter(name='student').exists())
+        for first, last in [('Hugo', 'Roux'), ('Inès', 'Blanc')]:
+            member = Member.objects.get(first_name=first, last_name=last)
+            self.assertIsNone(member.user)
+        self.assertEqual(Enrollment.objects.filter(formation=self.formation, member__first_name__in=['Emma', 'Hugo', 'Inès']).count(), 3)
+
+    def test_import_rejects_all_on_error(self):
+        resp = self.client.post(reverse('eleve-import'), {
+            'lines': "Leroy;Emma;emma@example.com\nSeul\nX;Y;pas-un-email\nZ;W;alice@example.com\nV;U;EMMA@example.com",
+        })
+        self.assertEqual(resp.status_code, 200)
+        for msg in ['Ligne 2', 'Ligne 3 : adresse email invalide', 'Ligne 4 : alice@example.com est déjà utilisée',
+                    'Ligne 5 : emma@example.com apparaît plusieurs fois']:
+            self.assertContains(resp, msg)
+        self.assertFalse(Member.objects.filter(first_name='Emma').exists())
+
+    def test_delete_student_and_student_account(self):
+        self.client.get(reverse('eleve-edit', args=[self.alice.pk]))
+        resp = self.client.post(reverse('eleve-delete', args=[self.alice.pk]))
+        self.assertRedirects(resp, reverse('suivi-students'), fetch_redirect_response=False)
+        self.assertFalse(Member.objects.filter(pk=self.alice.pk).exists())
+        self.assertFalse(Enrollment.objects.filter(member_id=self.alice.pk).exists())
+        self.assertFalse(get_user_model().objects.filter(pk=self.student_user.pk).exists())
+
+    def test_delete_student_keeps_staff_account(self):
+        member = Member.objects.create(user=self.instructor, first_name='Mo', last_name='Niteur')
+        resp = self.client.get(reverse('eleve-edit', args=[member.pk]))
+        self.assertContains(resp, 'est conservé')
+        self.client.post(reverse('eleve-delete', args=[member.pk]))
+        self.assertFalse(Member.objects.filter(pk=member.pk).exists())
+        self.assertTrue(get_user_model().objects.filter(pk=self.instructor.pk).exists())
+
+    def test_delete_requires_post_and_staff(self):
+        self.client.get(reverse('eleve-delete', args=[self.bob.pk]))
+        self.assertTrue(Member.objects.filter(pk=self.bob.pk).exists())
+        self.client.force_login(self.student_user)
+        self.client.post(reverse('eleve-delete', args=[self.bob.pk]))
+        self.assertTrue(Member.objects.filter(pk=self.bob.pk).exists())

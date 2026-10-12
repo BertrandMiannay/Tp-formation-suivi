@@ -91,6 +91,7 @@
     <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">
         Création rapide sans compte. Pour une fiche complète (email, certificat médical…) :
         <a href="{% url 'eleve-create' %}?formation={{ formation.pk }}" style="color:#1a1a2e;">formulaire élève</a>.
+        Plusieurs élèves d'un coup : <a href="{% url 'eleve-import' %}?formation={{ formation.pk }}" style="color:#1a1a2e;">import</a>.
     </p>
 </div>
 

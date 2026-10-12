@@ -38,6 +38,15 @@
         <button type="submit" class="btn btn-primary">{% if member %}Enregistrer{% else %}Créer l'élève{% endif %}</button>
     </div>
 </form>
+{% if member %}
+<form method="post" action="{% url 'eleve-delete' member.pk %}" class="card" style="max-width:800px; border-left:4px solid #dc3545;"
+      onsubmit="return confirm('Supprimer définitivement la fiche de {{ member|escapejs }} ? Inscriptions, présences, compétences, exercices et notes seront perdus.');">
+    {% csrf_token %}
+    <h2>Supprimer la fiche</h2>
+    <p class="muted" style="font-size:0.9rem;">Supprime définitivement l'élève et tout son suivi (inscriptions, présences, compétences, exercices, notes){% if member.user_id %}{% if delete_account %}, ainsi que son compte élève{% else %} ; le compte rattaché ({{ member.user.role_label|lower }}) est conservé{% endif %}{% endif %}.</p>
+    <div class="form-actions"><button type="submit" class="btn btn-danger">Supprimer l'élève</button></div>
+</form>
+{% endif %}
 {% if form.account %}
 <script>
 // Choisir un compte recharge le formulaire (?user=) pour reprendre son prénom, son nom et son email.
