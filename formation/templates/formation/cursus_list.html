@@ -39,6 +39,17 @@
           {% if cursus.status == 'active' %}Archiver{% else %}Réactiver{% endif %}
         </button>
       </form>
+      {% if cursus.deletable %}
+      <form method="post" action="{% url 'saison-cursus-supprimer' cursus.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger"
+                style="font-size:0.85rem; padding:0.25rem 0.75rem;"
+                title="Aucun élève inscrit : suppression définitive du cursus, de ses compétences et de ses formations"
+                onclick="return confirm('Supprimer définitivement le cursus « {{ cursus.name|escapejs }} », ses compétences et ses formations ? Cette action est irréversible.')">
+          Supprimer
+        </button>
+      </form>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
