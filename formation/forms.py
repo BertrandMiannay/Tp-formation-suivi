@@ -111,8 +111,8 @@ class StudentForm(forms.ModelForm):
 
 
 class StudentImportForm(forms.Form):
-    required_css_class = 'required'
     """Import de plusieurs élèves : une ligne « Nom ; Prénom ; Email » par élève (email facultatif)."""
+    required_css_class = 'required'
     MAX_LINES = 200
 
     lines = forms.CharField(

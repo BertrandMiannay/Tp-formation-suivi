@@ -30,7 +30,7 @@
         <div class="form-group {{ form.emergency_contact_name.css_classes }}"><label for="{{ form.emergency_contact_name.id_for_label }}">{{ form.emergency_contact_name.label }}</label>{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
         <div class="form-group {{ form.emergency_contact_phone.css_classes }}"><label for="{{ form.emergency_contact_phone.id_for_label }}">{{ form.emergency_contact_phone.label }}</label>{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
         {% if form.formation %}
-        <div class="form-group">
+        <div class="form-group {{ form.formation.css_classes }}">
             <label for="{{ form.formation.id_for_label }}">{{ form.formation.label }}</label>{{ form.formation }}{{ form.formation.errors }}
         </div>
         {% endif %}
