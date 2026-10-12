@@ -13,6 +13,7 @@ urlpatterns = [
     path('cursus/<int:pk>/', views.cursus_detail, name='saison-cursus-detail'),
     path('cursus/<int:pk>/export.json', views.cursus_export_json, name='saison-cursus-export'),
     path('cursus/<int:pk>/archiver/', views.cursus_archive, name='saison-cursus-archiver'),
+    path('cursus/<int:pk>/supprimer/', views.cursus_delete, name='saison-cursus-supprimer'),
 ]
 
 # Formations et inscriptions : /formations/

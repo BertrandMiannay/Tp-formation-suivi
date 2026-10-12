@@ -369,6 +369,9 @@ def cursus_list(request):
     cursus_list = Cursus.objects.annotate(
         category_count=Count('categories'),
     ).order_by('status', '-date')
+    in_use = Cursus.in_use_ids()
+    for cursus in cursus_list:
+        cursus.deletable = cursus.pk not in in_use
     return render(request, 'formation/cursus_list.html', {
         'cursus_list': cursus_list,
         'active_tab': 'cursus',
@@ -508,6 +511,24 @@ def cursus_archive(request, pk):
         cursus.save(update_fields=['status'])
         logger.info("CURSUS_STATUS pk=%s status=%s by=%s", cursus.pk, cursus.status, request.user.username)
         messages.success(request, f"Cursus « {cursus.name} » {action_label}.")
+    return redirect('saison-cursus')
+
+
+@admin_required
+def cursus_delete(request, pk):
+    """Suppression définitive d'un cursus (catégories, compétences et formations sans inscrit),
+    refusée dès qu'un élève y est inscrit ou y a un suivi."""
+    if request.method == 'POST':
+        cursus = get_object_or_404(Cursus, pk=pk)
+        if not cursus.is_deletable():
+            messages.error(request, f"Le cursus « {cursus.name} » ne peut pas être supprimé : des élèves y sont inscrits "
+                                    "ou y ont déjà un suivi. Archivez-le plutôt.")
+        else:
+            with transaction.atomic():
+                cursus.formations.all().delete()
+                cursus.delete()
+            logger.info("CURSUS_DELETE pk=%s name=%s by=%s", pk, cursus.name, request.user.username)
+            messages.success(request, f"Cursus « {cursus.name} » supprimé.")
     return redirect('saison-cursus')
 
 

@@ -545,3 +545,46 @@ class CursusJsonExportTests(SuiviFixtures):
         self.client.force_login(self.instructor)
         resp = self.client.get(reverse('saison-cursus-export', args=[self.cursus.pk]))
         self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False)
+
+
+class CursusDeleteTests(SuiviFixtures):
+    def setUp(self):
+        admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        self.client.force_login(admin)
+        self.empty = Cursus.objects.create(name='Niveau 3', date=date(2026, 1, 1))
+        cat = CursusCategory.objects.create(cursus=self.empty, name='Autonomie')
+        self.empty_skill = Skill.objects.create(category=cat, name='Planification', order=1)
+        self.empty_formation = Formation.objects.create(name='N3 promo 2027', cursus=self.empty)
+
+    def test_delete_cursus_without_students(self):
+        session = TrainingSession.objects.create(date=date(2026, 10, 7))
+        session.formations.add(self.empty_formation)
+        resp = self.client.get(reverse('saison-cursus'))
+        self.assertContains(resp, reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertNotContains(resp, reverse('saison-cursus-supprimer', args=[self.cursus.pk]))
+        self.client.post(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertFalse(Cursus.objects.filter(pk=self.empty.pk).exists())
+        self.assertFalse(Skill.objects.filter(pk=self.empty_skill.pk).exists())
+        self.assertFalse(Formation.objects.filter(pk=self.empty_formation.pk).exists())
+        self.assertTrue(TrainingSession.objects.filter(pk=session.pk).exists())
+
+    def test_delete_refused_with_enrollment(self):
+        # Inscription abandonnée : le cursus reste protégé
+        Enrollment.objects.create(member=self.bob, formation=self.empty_formation, status=Enrollment.Status.DROPPED)
+        self.client.post(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertTrue(Cursus.objects.filter(pk=self.empty.pk).exists())
+
+    def test_delete_refused_with_skill_tracking(self):
+        MemberSkill.objects.create(member=self.bob, skill=self.empty_skill)
+        self.assertNotContains(self.client.get(reverse('saison-cursus')),
+                               reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.client.post(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertTrue(Cursus.objects.filter(pk=self.empty.pk).exists())
+
+    def test_delete_requires_post_and_admin(self):
+        self.client.get(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertTrue(Cursus.objects.filter(pk=self.empty.pk).exists())
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('saison-cursus-supprimer', args=[self.empty.pk]))
+        self.assertTrue(Cursus.objects.filter(pk=self.empty.pk).exists())

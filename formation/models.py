@@ -32,6 +32,24 @@ class Cursus(models.Model):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def in_use_ids(cls):
+        """Cursus non supprimables : un élève est inscrit à l'une de leurs formations (quel que soit le statut)
+        ou a déjà un suivi (statut, évaluation, compétence travaillée) sur l'une de leurs compétences."""
+        from suivi.models import WorkedSkill
+        ids = set(Enrollment.objects.values_list('formation__cursus_id', flat=True).distinct())
+        for model in (MemberSkill, SkillEvaluation, WorkedSkill):
+            ids.update(model.objects.values_list('skill__category__cursus_id', flat=True).distinct())
+        return ids
+
+    def is_deletable(self):
+        from suivi.models import WorkedSkill
+        return not (
+            Enrollment.objects.filter(formation__cursus=self).exists()
+            or any(model.objects.filter(skill__category__cursus=self).exists()
+                   for model in (MemberSkill, SkillEvaluation, WorkedSkill))
+        )
+
 
 class CursusCategory(models.Model):
     cursus = models.ForeignKey(Cursus, on_delete=models.CASCADE, related_name='categories')
