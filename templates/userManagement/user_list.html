@@ -19,7 +19,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for u, invite_url in users_with_urls %}
+        {% for u, invite_url, manageable in users_with_urls %}
         <tr>
             <td class="stack">
                 {% if u.is_active %}<strong>{{ u.username }}</strong>{% endif %}
@@ -50,7 +50,7 @@
                 {% endif %}
             </td>
             <td style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                {% if u != request.user %}
+                {% if manageable %}
                     {% if not invite_url %}
                         <a href="{% url 'userManagement:user_role' u.pk %}" class="btn btn-secondary">Rôle</a>
                     {% endif %}

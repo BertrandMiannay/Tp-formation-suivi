@@ -192,3 +192,44 @@ class InitDevDbTests(TestCase):
         with mock.patch('os.remove') as remove, self.assertRaises(CommandError):
             call_command('init_dev_db')
         remove.assert_not_called()
+
+
+class SuperuserProtectionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.root = User.objects.create_superuser('root', 'root@example.com', 'pwd')
+        cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
+        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+
+    def test_admin_cannot_take_over_or_delete_superuser(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(reverse('userManagement:password_reset_link', args=[self.root.pk])).url,
+                         reverse('home'))
+        self.assertEqual(self.client.get(reverse('userManagement:user_role', args=[self.root.pk])).status_code, 404)
+        self.client.post(reverse('userManagement:user_delete', args=[self.root.pk]))
+        self.assertTrue(get_user_model().objects.filter(pk=self.root.pk).exists())
+        self.assertNotContains(self.client.get(reverse('userManagement:user_list')),
+                               reverse('userManagement:user_delete', args=[self.root.pk]))
+
+    def test_superuser_can_manage_admin(self):
+        self.client.force_login(self.root)
+        self.assertEqual(self.client.get(reverse('userManagement:user_role', args=[self.admin.pk])).status_code, 200)
+        self.client.post(reverse('userManagement:user_delete', args=[self.admin.pk]))
+        self.assertFalse(get_user_model().objects.filter(pk=self.admin.pk).exists())
+
+    def test_invite_rejects_existing_email_whatever_the_case(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('userManagement:invite'), {'email': 'Admin@Example.com', 'role': Role.INSTRUCTOR})
+        self.assertFormError(response.context['form'], 'email', 'Un utilisateur avec cet email existe déjà.')
+        self.assertEqual(get_user_model().objects.filter(email__iexact='admin@example.com').count(), 1)
+
+    def test_django_admin_login_goes_through_allauth(self):
+        response = self.client.get('/admin/login/?next=/admin/')
+        self.assertRedirects(response, reverse('account_login') + '?next=/admin/', fetch_redirect_response=False)
+        self.client.post('/admin/login/', {'username': 'root', 'password': 'pwd'})
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.client.force_login(self.admin)  # connecté sans accès à l'admin : pas de boucle de redirection
+        self.assertRedirects(self.client.get('/admin/login/'), reverse('home'), fetch_redirect_response=False)
+        self.client.force_login(self.root)
+        self.assertEqual(self.client.get('/admin/').status_code, 200)

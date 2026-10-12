@@ -27,7 +27,7 @@
 | S08 | Jetons d'invitation à durée limitée | ✅ |
 | S09 | Journalisation des actions sensibles | ✅ |
 | S10 | URL d'invitation non stockée en base | ✅ |
-| S12 | Limitation des tentatives de connexion | ✅ (défaut allauth) |
+| S12 | Limitation des tentatives de connexion (admin Django compris) | ✅ |
 | S13 | Réinitialisation de mot de passe sans email | ✅ |
 | S14 | HSTS | ✅ (1 an par défaut en production) |
 | S15 | Échappement des données dans le JavaScript des gabarits | ✅ |
@@ -35,6 +35,7 @@
 | S17 | Pages allauth limitées à la connexion / déconnexion | ✅ |
 | S18 | Email d'un compte encadrant / admin non modifiable depuis une fiche élève | ✅ |
 | S19 | `init_dev_db` refusé hors développement | ✅ |
+| S20 | Compte superutilisateur protégé des administrateurs | ✅ |
 
 ---
 
@@ -72,7 +73,9 @@ Logs `INFO` : invitation envoyée / acceptée, changement de rôle, suppression 
 Seul le jeton (UUID) est stocké ; l'URL est reconstruite à l'affichage.
 
 ### ✅ S12 — Limitation des tentatives de connexion
-Limites par défaut d'allauth (`login_failed` : 10/min par IP, 5 échecs par compte). Elles reposent sur le cache Django (mémoire locale par processus gunicorn) : suffisant pour un club, à renforcer (cache partagé, django-axes) si besoin.
+Limites par défaut d'allauth (`login_failed` : 10/min par IP, 5 échecs par compte). Les compteurs sont dans un cache fichier
+partagé par les workers gunicorn et conservé aux redémarrages (`CACHE_DIR`, `/data/cache` dans l'image).
+La page de connexion de l'admin Django (sans limite) redirige vers celle d'allauth (`config/urls.py`, `admin_login`).
 
 ### ✅ S13 — Réinitialisation de mot de passe sans email
 Lien généré par un administrateur (tout compte actif) ou un encadrant (comptes élèves uniquement, jamais le sien), via `default_token_generator` :
@@ -101,6 +104,10 @@ de ce compte n'est alors plus modifiable depuis la fiche (champ désactivé, ign
 
 ### ✅ S19 — `init_dev_db`
 La commande efface la base : elle lève une erreur si `DEBUG` n'est pas activé.
+
+### ✅ S20 — Compte superutilisateur
+Un superutilisateur (accès à l'admin Django) n'est géré que par un superutilisateur (`can_manage_account`) : un administrateur ne peut
+ni générer son lien de réinitialisation de mot de passe (ce qui lui donnerait l'accès à l'admin Django), ni changer son rôle, ni le supprimer.
 
 ---
 

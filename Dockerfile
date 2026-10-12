@@ -28,7 +28,8 @@ RUN useradd --create-home --uid 1000 app \
 USER app
 
 # Base SQLite persistée dans le volume /data (surchargeable par DATABASE_URL).
-ENV DATABASE_URL=sqlite:////data/db.sqlite3
+ENV DATABASE_URL=sqlite:////data/db.sqlite3 \
+    CACHE_DIR=/data/cache
 VOLUME /data
 EXPOSE 8000
 

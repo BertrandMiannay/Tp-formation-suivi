@@ -130,6 +130,16 @@ if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
     })
 
 
+# Cache partagé par les workers gunicorn et conservé aux redémarrages (volume /data en production) :
+# il porte les compteurs de tentatives de connexion d'allauth. Mémoire locale pendant les tests.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'} if TESTING else {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': os.environ.get('CACHE_DIR', str(BASE_DIR / '.cache')),
+    },
+}
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 

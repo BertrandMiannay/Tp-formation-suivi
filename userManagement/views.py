@@ -1,3 +1,4 @@
+import copy
 import logging
 import uuid
 from datetime import timedelta
@@ -72,9 +73,16 @@ def invite_url_for(request, user):
     return request.build_absolute_uri(reverse('userManagement:accept_invite', args=[user.invite_token]))
 
 
+def can_manage_account(actor, target):
+    """Jamais son propre compte ; un superutilisateur (accès à l'admin Django) n'est géré que par un
+    superutilisateur, pour qu'un administrateur ne puisse pas s'en emparer ni le supprimer."""
+    return target != actor and (actor.is_superuser or not target.is_superuser)
+
+
 def can_reset_password(actor, target):
-    """Un admin peut réinitialiser tout compte actif ; un encadrant, seulement celui d'un élève."""
-    if not target.is_active or target == actor:
+    """Un admin peut réinitialiser tout compte actif (superutilisateur excepté) ; un encadrant,
+    seulement celui d'un élève."""
+    if not target.is_active or not can_manage_account(actor, target):
         return False
     return actor.is_administrator or (actor.is_club_staff and target.role == Role.STUDENT)
 
@@ -182,11 +190,13 @@ class AcceptInviteForm(forms.Form):
         if p1 and p2:
             if p1 != p2:
                 raise forms.ValidationError('Les mots de passe ne correspondent pas.')
-            # Règles AUTH_PASSWORD_VALIDATORS (longueur, mot de passe courant, similarité…).
-            if self.user and cleaned_data.get('username'):
-                self.user.username = cleaned_data['username']
+            # Règles AUTH_PASSWORD_VALIDATORS (longueur, mot de passe courant, similarité avec le
+            # nom d'utilisateur choisi…), sur une copie pour ne pas modifier le compte avant validation.
+            candidate = copy.copy(self.user)
+            if candidate and cleaned_data.get('username'):
+                candidate.username = cleaned_data['username']
             try:
-                password_validation.validate_password(p2, self.user)
+                password_validation.validate_password(p2, candidate)
             except forms.ValidationError as error:
                 self.add_error('password2', error)
         return cleaned_data
@@ -202,7 +212,9 @@ class UserListView(AdminRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['users_with_urls'] = [(u, invite_url_for(self.request, u)) for u in ctx['users']]
+        ctx['users_with_urls'] = [
+            (u, invite_url_for(self.request, u), can_manage_account(self.request.user, u)) for u in ctx['users']
+        ]
         ctx['app_version'] = settings.APP_VERSION
         return ctx
 
@@ -213,7 +225,10 @@ class UserRoleUpdateView(AdminRequiredMixin, FormView):
     success_url = reverse_lazy('userManagement:user_list')
 
     def get_target_user(self):
-        return get_object_or_404(User, pk=self.kwargs['pk'])
+        user = get_object_or_404(User, pk=self.kwargs['pk'])
+        if not can_manage_account(self.request.user, user):
+            raise Http404
+        return user
 
     def get_initial(self):
         return {'role': self.get_target_user().role}
@@ -239,9 +254,9 @@ class InviteView(AdminRequiredMixin, FormView):
     form_class = InvitationForm
 
     def form_valid(self, form):
-        email = form.cleaned_data['email']
+        email = form.cleaned_data['email'].strip().lower()
 
-        if User.objects.filter(email=email).exists():
+        if User.objects.filter(email__iexact=email).exists():
             form.add_error('email', 'Un utilisateur avec cet email existe déjà.')
             return self.form_invalid(form)
 
@@ -340,7 +355,7 @@ class PasswordResetView(View):
 class UserDeleteView(AdminRequiredMixin, View):
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)
-        if user != request.user:
+        if can_manage_account(request.user, user):
             logger.info("USER_DELETE user=%s email=%s by=%s",
                         user.username, user.email, request.user.username)
             user.delete()
