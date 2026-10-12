@@ -1,13 +1,19 @@
+import io
 import json
 import logging
+from datetime import date
 from urllib.parse import quote
+from xml.sax.saxutils import escape
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Max, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.formats import date_format
 
 from formation.forms import FormationForm, QuickStudentForm, StudentForm
 from formation.models import (
@@ -18,6 +24,14 @@ from userManagement.views import admin_required, club_staff_required, create_inv
 from userManagement.models import Role
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_iso_date(value):
+    """Date AAAA-MM-JJ saisie dans un formulaire de cursus, ou None si le format est invalide."""
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +89,7 @@ def student_edit(request, pk):
                 if member.user_id is None:
                     if email:
                         attach_account(member, email)
-                elif member.user.email != email:
+                elif form.manages_account_email and member.user.email != email:
                     member.user.email = email
                     member.user.save(update_fields=['email'])
             logger.info("STUDENT_EDIT pk=%s by=%s", member.pk, request.user.username)
@@ -299,17 +313,13 @@ def cursus_create(request):
             error = "Le nom du cursus est obligatoire."
         elif not date_str:
             error = "La date de version est obligatoire."
+        elif (parsed_date := _parse_iso_date(date_str)) is None:
+            error = "Format de date invalide (attendu : AAAA-MM-JJ)."
         else:
-            from datetime import date as date_cls
-            try:
-                parsed_date = date_cls.fromisoformat(date_str)
-            except ValueError:
-                error = "Format de date invalide (attendu : AAAA-MM-JJ)."
-            else:
-                cursus = Cursus.objects.create(name=name, date=parsed_date)
-                logger.info("CURSUS_CREATE pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
-                messages.success(request, f"Cursus « {cursus.name} » créé.")
-                return redirect('saison-cursus-detail', pk=cursus.pk)
+            cursus = Cursus.objects.create(name=name, date=parsed_date)
+            logger.info("CURSUS_CREATE pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
+            messages.success(request, f"Cursus « {cursus.name} » créé.")
+            return redirect('saison-cursus-detail', pk=cursus.pk)
     return render(request, 'formation/cursus_create.html', {
         'error': error,
         'form_data': form_data,
@@ -328,14 +338,13 @@ def cursus_detail(request, pk):
             name = request.POST.get('name', '').strip()
             date_str = request.POST.get('date', '').strip()
             if name and date_str:
-                from datetime import date as date_cls
-                try:
-                    cursus.name = name
-                    cursus.date = date_cls.fromisoformat(date_str)
+                parsed_date = _parse_iso_date(date_str)
+                if parsed_date is None:
+                    messages.error(request, "Format de date invalide.")
+                else:
+                    cursus.name, cursus.date = name, parsed_date
                     cursus.save(update_fields=['name', 'date'])
                     messages.success(request, "Cursus mis à jour.")
-                except ValueError:
-                    messages.error(request, "Format de date invalide.")
             return redirect('saison-cursus-detail', pk=pk)
 
         elif action == 'add_category':
@@ -426,6 +435,8 @@ def cursus_import_json(request):
         except json.JSONDecodeError as e:
             error = f"JSON invalide : {e}"
         else:
+            if not isinstance(data, dict):
+                data = {}
             name = str(data.get('name', '')).strip()
             date_str = str(data.get('date', '')).strip()
             categories_raw = data.get('categories', [])
@@ -435,31 +446,28 @@ def cursus_import_json(request):
                 error = "Le champ « date » est obligatoire (format AAAA-MM-JJ)."
             elif not isinstance(categories_raw, list):
                 error = "Le champ « categories » doit être une liste."
+            elif (parsed_date := _parse_iso_date(date_str)) is None:
+                error = "Format de date invalide (attendu : AAAA-MM-JJ)."
             else:
-                from datetime import date as date_cls
-                try:
-                    parsed_date = date_cls.fromisoformat(date_str)
-                except ValueError:
-                    error = "Format de date invalide (attendu : AAAA-MM-JJ)."
-                else:
-                    with transaction.atomic():
-                        cursus = Cursus.objects.create(name=name, date=parsed_date)
-                        for cat_order, cat_data in enumerate(categories_raw, start=1):
-                            cat_name = str(cat_data.get('name', '')).strip()
-                            if not cat_name:
-                                continue
-                            category = CursusCategory.objects.create(
-                                cursus=cursus, name=cat_name, order=cat_order
-                            )
-                            for skill_order, skill_data in enumerate(cat_data.get('skills', []), start=1):
-                                skill_name = str(skill_data.get('name', '')).strip()
-                                if skill_name:
-                                    Skill.objects.create(
-                                        category=category, name=skill_name, order=skill_order
-                                    )
-                    logger.info("CURSUS_IMPORT pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
-                    messages.success(request, f"Cursus « {cursus.name} » importé avec succès.")
-                    return redirect('saison-cursus-detail', pk=cursus.pk)
+                with transaction.atomic():
+                    cursus = Cursus.objects.create(name=name, date=parsed_date)
+                    for cat_order, cat_data in enumerate(categories_raw, start=1):
+                        cat_name = str(cat_data.get('name', '')).strip() if isinstance(cat_data, dict) else ''
+                        if not cat_name:
+                            continue
+                        category = CursusCategory.objects.create(
+                            cursus=cursus, name=cat_name, order=cat_order
+                        )
+                        skills_raw = cat_data.get('skills', [])
+                        for skill_order, skill_data in enumerate(skills_raw if isinstance(skills_raw, list) else [], start=1):
+                            skill_name = str(skill_data.get('name', '')).strip() if isinstance(skill_data, dict) else ''
+                            if skill_name:
+                                Skill.objects.create(
+                                    category=category, name=skill_name, order=skill_order
+                                )
+                logger.info("CURSUS_IMPORT pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
+                messages.success(request, f"Cursus « {cursus.name} » importé avec succès.")
+                return redirect('saison-cursus-detail', pk=cursus.pk)
     return render(request, 'formation/formation_import.html', {
         'error': error,
         'json_text': json_text,
@@ -471,12 +479,11 @@ def cursus_import_json(request):
 def evaluation_save(request, pk, cursus_pk):
     if request.method != 'POST':
         return redirect('eleve-evaluation', pk=pk)
-    from django.utils import timezone as tz
     member = get_object_or_404(Member, pk=pk)
     cursus = get_object_or_404(Cursus, pk=cursus_pk)
     valid_statuses = set(dict(MemberSkill.SkillStatus.choices))
     skills = Skill.objects.filter(category__cursus=cursus)
-    today = tz.localdate()
+    today = timezone.localdate()
     current = {
         ms.skill_id: ms.status
         for ms in MemberSkill.objects.filter(member=member, skill__in=skills)
@@ -501,24 +508,16 @@ def evaluation_save(request, pk, cursus_pk):
 
 @club_staff_required
 def evaluation_export(request, pk, cursus_pk):
-    import io
-    from django.http import HttpResponse
-    from django.utils.formats import date_format
-    from xml.sax.saxutils import escape
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
 
     member = get_object_or_404(Member, pk=pk)
     cursus = get_object_or_404(Cursus, pk=cursus_pk)
 
-    categories = (
-        cursus.categories
-        .prefetch_related('skills__member_skills', 'skills__evaluations')
-        .all()
-    )
+    categories = cursus.categories.prefetch_related('skills')
     member_skills = {
         ms.skill_id: ms
         for ms in MemberSkill.objects.filter(member=member, skill__category__cursus=cursus)
@@ -526,12 +525,6 @@ def evaluation_export(request, pk, cursus_pk):
     evaluations_by_skill = {}
     for ev in SkillEvaluation.objects.filter(member=member, skill__category__cursus=cursus).select_related('author').order_by('-date'):
         evaluations_by_skill.setdefault(ev.skill_id, []).append(ev)
-
-    STATUS_LABELS = {
-        MemberSkill.SkillStatus.NOT_ACQUIRED: 'Non acquis',
-        MemberSkill.SkillStatus.IN_PROGRESS:  "En cours",
-        MemberSkill.SkillStatus.ACQUIRED:     'Acquis',
-    }
 
     styles = getSampleStyleSheet()
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=8, leading=10)
@@ -552,7 +545,7 @@ def evaluation_export(request, pk, cursus_pk):
 
     for category in categories:
         table_data.append([
-            Paragraph(category.name, bold_cat),
+            Paragraph(escape(category.name), bold_cat),
             '', '',
         ])
         row_styles.append(('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#f3f4f6')))
@@ -561,7 +554,8 @@ def evaluation_export(request, pk, cursus_pk):
 
         for skill in category.skills.all():
             ms = member_skills.get(skill.pk)
-            status_label = STATUS_LABELS.get(ms.status if ms else None, 'Non acquis')
+            status_label = (ms.get_status_display() if ms
+                            else MemberSkill.SkillStatus.NOT_ACQUIRED.label)
             evs = evaluations_by_skill.get(skill.pk, [])
 
             comment_lines = []
@@ -574,7 +568,7 @@ def evaluation_export(request, pk, cursus_pk):
             comment_para = Paragraph('<br/>'.join(comment_lines), small_grey) if comment_lines else ''
 
             table_data.append([
-                Paragraph(skill.name, small),
+                Paragraph(escape(skill.name), small),
                 Paragraph(status_label, small),
                 comment_para,
             ])
@@ -603,7 +597,7 @@ def evaluation_export(request, pk, cursus_pk):
     title_style = ParagraphStyle('title', parent=styles['Heading1'], fontSize=14, spaceAfter=12)
 
     story = [
-        Paragraph(cursus.name, title_style),
+        Paragraph(escape(cursus.name), title_style),
         table,
     ]
     doc.build(story)
@@ -622,7 +616,5 @@ def evaluation_export(request, pk, cursus_pk):
 def evaluation_delete(request, pk, ev_pk):
     if request.method != 'POST':
         return redirect('eleve-evaluation', pk=pk)
-    ev = get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk)
-    cursus_pk = ev.skill.category.cursus_id
-    ev.delete()
+    get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk).delete()
     return redirect('eleve-evaluation', pk=pk)

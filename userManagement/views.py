@@ -4,9 +4,9 @@ from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
-from django.contrib.auth import get_user_model, login, update_session_auth_hash
+from django.contrib.auth import get_user_model, login, password_validation, update_session_auth_hash
 from django.contrib import messages
-from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import Group
@@ -14,8 +14,8 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from django.views.generic import ListView, UpdateView, FormView, View, TemplateView
+from django.utils.http import url_has_allowed_host_and_scheme, urlsafe_base64_decode, urlsafe_base64_encode
+from django.views.generic import ListView, FormView, View, TemplateView
 from django.urls import reverse, reverse_lazy
 from django import forms
 
@@ -24,10 +24,6 @@ from .models import Role
 logger = logging.getLogger(__name__)
 
 INVITE_EXPIRY_DAYS = 7
-
-
-def _is_club_staff(user):
-    return user.is_club_staff
 
 
 def _make_permission_decorator(check_fn):
@@ -43,12 +39,8 @@ def _make_permission_decorator(check_fn):
     return decorator
 
 
-def _is_admin(user):
-    return user.is_administrator
-
-
-admin_required = _make_permission_decorator(_is_admin)
-club_staff_required = _make_permission_decorator(_is_club_staff)
+admin_required = _make_permission_decorator(lambda user: user.is_administrator)
+club_staff_required = _make_permission_decorator(lambda user: user.is_club_staff)
 
 User = get_user_model()
 
@@ -93,13 +85,6 @@ def password_reset_url_for(request, user):
     uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
     return request.build_absolute_uri(reverse('userManagement:password_reset', args=[uidb64, token]))
-
-
-def _check_passwords_match(cleaned_data, field1, field2):
-    p1 = cleaned_data.get(field1)
-    p2 = cleaned_data.get(field2)
-    if p1 and p2 and p1 != p2:
-        raise forms.ValidationError('Les mots de passe ne correspondent pas.')
 
 
 class HomeView(LoginRequiredMixin, TemplateView):
@@ -160,7 +145,7 @@ class ClubStaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
     """Allow access to instructors and admins."""
 
     def test_func(self):
-        return _is_club_staff(self.request.user)
+        return self.request.user.is_club_staff
 
 
 class UserRoleForm(forms.Form):
@@ -193,7 +178,17 @@ class AcceptInviteForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        _check_passwords_match(cleaned_data, 'password1', 'password2')
+        p1, p2 = cleaned_data.get('password1'), cleaned_data.get('password2')
+        if p1 and p2:
+            if p1 != p2:
+                raise forms.ValidationError('Les mots de passe ne correspondent pas.')
+            # Règles AUTH_PASSWORD_VALIDATORS (longueur, mot de passe courant, similarité…).
+            if self.user and cleaned_data.get('username'):
+                self.user.username = cleaned_data['username']
+            try:
+                password_validation.validate_password(p2, self.user)
+            except forms.ValidationError as error:
+                self.add_error('password2', error)
         return cleaned_data
 
 
@@ -207,12 +202,7 @@ class UserListView(AdminRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['users_with_urls'] = [
-            (u, self.request.build_absolute_uri(
-                reverse('userManagement:accept_invite', args=[u.invite_token])
-            ) if u.invite_token else None)
-            for u in ctx['users']
-        ]
+        ctx['users_with_urls'] = [(u, invite_url_for(self.request, u)) for u in ctx['users']]
         ctx['app_version'] = settings.APP_VERSION
         return ctx
 
@@ -308,10 +298,14 @@ class PasswordResetLinkView(LoginRequiredMixin, View):
         member = getattr(target, 'student_profile', None)
         back_url = (reverse('suivi-student-detail', args=[member.pk]) + '#infos'
                     if member and not request.user.is_administrator else reverse('userManagement:user_list'))
+        next_url = request.POST.get('next')
+        if next_url and url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            back_url = next_url
         return render(request, 'userManagement/password_reset_link.html', {
             'target_user': target,
             'reset_url': password_reset_url_for(request, target),
-            'back_url': request.POST.get('next') or back_url,
+            'back_url': back_url,
         })
 
 
@@ -353,30 +347,9 @@ class UserDeleteView(AdminRequiredMixin, View):
         return redirect('userManagement:user_list')
 
 
-class ChangePasswordForm(forms.Form):
-    old_password = forms.CharField(label='Ancien mot de passe', widget=forms.PasswordInput)
-    new_password1 = forms.CharField(label='Nouveau mot de passe', widget=forms.PasswordInput)
-    new_password2 = forms.CharField(label='Répéter le nouveau mot de passe', widget=forms.PasswordInput)
-
-    def __init__(self, *args, user=None, **kwargs):
-        self.user = user
-        super().__init__(*args, **kwargs)
-
-    def clean_old_password(self):
-        old_password = self.cleaned_data['old_password']
-        if not self.user.check_password(old_password):
-            raise forms.ValidationError("Mot de passe incorrect.")
-        return old_password
-
-    def clean(self):
-        cleaned_data = super().clean()
-        _check_passwords_match(cleaned_data, 'new_password1', 'new_password2')
-        return cleaned_data
-
-
 class ChangePasswordView(LoginRequiredMixin, FormView):
     template_name = 'userManagement/change_password.html'
-    form_class = ChangePasswordForm
+    form_class = PasswordChangeForm
     success_url = reverse_lazy('userManagement:change_password')
 
     def get_form_kwargs(self):
@@ -385,8 +358,7 @@ class ChangePasswordView(LoginRequiredMixin, FormView):
         return kwargs
 
     def form_valid(self, form):
-        self.request.user.set_password(form.cleaned_data['new_password1'])
-        self.request.user.save()
-        update_session_auth_hash(self.request, self.request.user)
+        form.save()
+        update_session_auth_hash(self.request, form.user)
         messages.success(self.request, 'Mot de passe mis à jour avec succès.')
         return super().form_valid(form)

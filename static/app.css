@@ -1,0 +1,252 @@
+/* Styles de l'application (chargés par templates/base.html). */
+
+/* ---- Commun ---- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; -webkit-text-size-adjust: 100%; }
+nav { background: #1a1a2e; color: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+nav a { color: #ccc; text-decoration: none; }
+nav a:hover, nav a.active { color: white; }
+.nav-links a.active { font-weight: 600; }
+nav .brand { font-weight: bold; font-size: 1.1rem; color: white; white-space: nowrap; }
+nav .spacer { flex: 1; }
+.nav-links { display: flex; align-items: center; gap: 1.5rem; flex: 1; }
+.nav-toggle { display: none; margin-left: auto; background: none; border: 1px solid #4b4b6b; border-radius: 4px; color: white; font-size: 1.25rem; line-height: 1; padding: 0.4rem 0.6rem; cursor: pointer; }
+.messages { padding: 0.75rem 1.5rem; }
+.messages .message { padding: 0.5rem 1rem; margin-bottom: 0.5rem; border-radius: 4px; }
+.messages .message.success { background: #d4edda; color: #155724; }
+.messages .message.error { background: #f8d7da; color: #721c24; }
+.messages .message.info { background: #d1ecf1; color: #0c5460; }
+main { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+h1 { margin-bottom: 1.5rem; font-size: 1.75rem; }
+.btn { display: inline-block; padding: 0.4rem 1rem; border-radius: 4px; text-decoration: none; font-size: 0.9rem; cursor: pointer; border: none; }
+.btn-primary { background: #1a1a2e; color: white; }
+.btn-primary:hover { background: #2a2a4e; }
+.btn-danger { background: #dc3545; color: white; }
+.btn-danger:hover { background: #c82333; }
+.btn-secondary { background: #6c757d; color: white; }
+.btn-secondary:hover { background: #5a6268; }
+table { width: 100%; border-collapse: collapse; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #eee; }
+th { background: #f8f9fa; font-weight: 600; }
+.form-card { background: white; padding: 2rem; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 500px; }
+.form-group { margin-bottom: 1rem; }
+label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
+input, select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+input:focus, select:focus { outline: none; border-color: #1a1a2e; }
+.form-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+/* En-tête de page : titre à gauche, actions à droite (passent à la ligne sur mobile). */
+.page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+.page-header h1 { margin: 0; }
+.actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.actions select { width: auto; }
+.show-sm { display: none; }
+/* Barre d'onglets en bas d'écran (encadrants, mobile uniquement). */
+.tabbar { display: none; }
+
+@media (max-width: 640px) {
+    main { margin: 1rem auto; padding: 0 0.75rem; }
+    h1 { font-size: 1.35rem; margin-bottom: 1rem; }
+    nav { padding: 0.6rem 0.75rem; flex-wrap: wrap; gap: 0; }
+    .nav-toggle { display: block; }
+    .nav-links { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; margin-top: 0.5rem; }
+    nav.open .nav-links { display: flex; }
+    .nav-links a { padding: 0.75rem 0.25rem; border-top: 1px solid #2c2c48; font-size: 1.05rem; }
+    .nav-links .spacer { display: none; }
+    .messages { padding: 0.5rem 0.75rem 0; }
+    /* Cibles tactiles plus grandes ; 16px évite le zoom automatique d'iOS sur les champs. */
+    .btn { padding: 0.6rem 1rem; font-size: 0.95rem; min-height: 2.5rem; }
+    input, select, textarea { font-size: 16px !important; }
+    input[type=checkbox], input[type=radio] { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+    .form-card { padding: 1.25rem; }
+    .page-header { gap: 0.75rem; }
+    .page-header .actions { width: 100%; }
+    .page-header .actions > * { flex: 1 1 auto; }
+    .page-header .actions select, .page-header .actions form { width: 100%; }
+    .hide-sm { display: none !important; }
+    body.has-tabbar { --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom)); padding-bottom: var(--tabbar-h); }
+    .has-tabbar .nav-toggle, .has-tabbar .nav-main { display: none; }
+    .has-tabbar nav.open .nav-links { position: fixed; left: 0; right: 0; bottom: var(--tabbar-h); z-index: 19; margin: 0; padding: 0 1rem 0.25rem; background: #1a1a2e; box-shadow: 0 -4px 12px rgba(0,0,0,0.25); }
+    .has-tabbar .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: var(--tabbar-h); padding-bottom: env(safe-area-inset-bottom); background: #1a1a2e; border-top: 1px solid #2c2c48; }
+    .tabbar a, .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; color: #9a9ab5; text-decoration: none; font-size: 0.72rem; background: none; border: none; font-family: inherit; cursor: pointer; }
+    .tabbar a.active, .tabbar button[aria-expanded=true] { color: white; }
+    .tabbar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .show-sm { display: inline; }
+    /* Tableaux → cartes empilées (libellé de colonne repris via data-label). */
+    table, thead, tbody, tr, th, td { display: block; }
+    thead { display: none; }
+    table { box-shadow: none; background: transparent; }
+    tr { background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+    td { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; border-bottom: 1px solid #f0f0f0; padding: 0.6rem 1rem; }
+    td:last-child { border-bottom: none; }
+    td[data-label]::before { content: attr(data-label); font-weight: 600; color: #555; flex-shrink: 0; margin-right: 0.5rem; }
+    th, td { width: auto !important; }
+    td.stack { display: block; }
+    td.stack::before { display: block; margin: 0 0 0.25rem; }
+    tbody th { border-bottom: none; padding-bottom: 0; background: none; color: #555; font-size: 0.85rem; }
+    /* Tableaux imbriqués dans une carte : simple liste, pas de carte dans la carte. */
+    .card table tr, details table tr, .list-table tr { border-width: 0 0 1px; border-radius: 0; box-shadow: none; margin-bottom: 0; }
+}
+
+/* ---- Pages encadrants (séances, élèves, formations) ---- */
+.view-switch { display:inline-flex; border:1px solid #1a1a2e; border-radius:6px; overflow:hidden; margin-bottom:1.25rem; }
+.view-switch a { padding:0.4rem 1.1rem; text-decoration:none; font-size:0.95rem; color:#1a1a2e; background:white; }
+.view-switch a.active { background:#1a1a2e; color:white; }
+.card { background:white; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); padding:1.25rem; margin-bottom:1.5rem; }
+.card h2 { font-size:1.1rem; color:#1a1a2e; margin-bottom:0.75rem; }
+.muted { color:#6b7280; }
+.badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.8rem; white-space:nowrap; }
+.badge-present, .badge-success, .badge-acquired { background:#dcfce7; color:#166534; }
+.badge-absent, .badge-not_done { background:#fee2e2; color:#991b1b; }
+.badge-excused, .badge-partial, .badge-in_progress { background:#fef3c7; color:#92400e; }
+.badge-not_acquired, .badge-none { background:#f3f4f6; color:#6b7280; }
+.badge-staff { background:#e0e7ff; color:#3730a3; }
+.badge-student { background:#dcfce7; color:#166534; }
+.badge-cursus { background:#e0e7ff; color:#3730a3; }
+.badge-enroll-active { background:#dbeafe; color:#1e40af; }
+.badge-enroll-completed { background:#dcfce7; color:#166534; }
+.badge-enroll-dropped { background:#f3f4f6; color:#6b7280; }
+.stats { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+.stat { background:white; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); padding:0.75rem 1.25rem; min-width:120px; }
+.stat .value { font-size:1.5rem; font-weight:600; color:#1a1a2e; }
+.stat .label { font-size:0.8rem; color:#6b7280; }
+.progress { background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden; min-width:80px; }
+.progress > div { background:#16a34a; height:100%; }
+input[type=checkbox], input[type=radio] { width:auto; }
+textarea { width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.95rem; font-family:inherit; }
+.checkbox-list ul, .checkbox-list div > div { list-style:none; }
+.checkbox-list label { display:flex; align-items:center; gap:0.4rem; font-weight:normal; }
+.inline-form { display:inline; }
+.link-btn { background:none; border:none; cursor:pointer; color:#dc2626; font-size:0.85rem; padding:0; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media (max-width: 640px) { .grid-2 { grid-template-columns:1fr; } }
+.radio-group { display:flex; gap:0.4rem; flex-wrap:wrap; }
+.radio-group label { display:flex; align-items:center; gap:0.3rem; font-weight:normal; margin:0; padding:0.25rem 0.6rem; border:1px solid #d1d5db; border-radius:999px; cursor:pointer; font-size:0.9rem; background:white; }
+.radio-group label:has(input:checked) { border-color:#1a1a2e; background:#eef0ff; }
+.radio-group label.att-present:has(input:checked) { background:#dcfce7; border-color:#16a34a; color:#166534; }
+.radio-group label.att-absent:has(input:checked) { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
+.radio-group label.att-excused:has(input:checked) { background:#fef3c7; border-color:#d97706; color:#92400e; }
+.errorlist { color:#b91c1c; font-size:0.85rem; list-style:none; }
+/* Barre d'enregistrement collée en bas de l'écran pendant le défilement d'un long formulaire. */
+.sticky-actions { position:sticky; bottom:var(--tabbar-h, 0px); z-index:5; background:white; padding:0.75rem 0; margin-top:0.75rem; border-top:1px solid #eee; }
+@media (max-width: 640px) {
+    .view-switch { display:flex; margin-bottom:1rem; }
+    .view-switch a { flex:1; text-align:center; padding:0.55rem 0.5rem; }
+    .card { padding:1rem; margin-bottom:1rem; }
+    .stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:0.5rem; margin-bottom:1rem; }
+    .stat { min-width:0; padding:0.6rem 0.75rem; }
+    .stat .value { font-size:1.25rem; }
+    .radio-group { width:100%; }
+    .radio-group label { flex:1 1 auto; justify-content:center; padding:0.5rem 0.6rem; font-size:0.95rem; }
+    .sticky-actions { margin-left:-1rem; margin-right:-1rem; padding:0.6rem 1rem; box-shadow:0 -2px 6px rgba(0,0,0,0.06); }
+    .sticky-actions .btn { width:100%; }
+    .link-btn { font-size:0.95rem; padding:0.35rem 0; }
+}
+
+/* ---- Tableau des présences (suivi/_attendance_matrix.html) ---- */
+.att-matrix { overflow-x:auto; }
+.att-matrix table { width:auto; min-width:100%; }
+.att-matrix th, .att-matrix td { padding:0.4rem 0.5rem; text-align:center; white-space:nowrap; font-size:0.85rem; }
+.att-matrix th:first-child, .att-matrix td:first-child { text-align:left; position:sticky; left:0; background:white; }
+.cell-present { background:#dcfce7; color:#166534; }
+.cell-absent { background:#fee2e2; color:#991b1b; }
+.cell-excused { background:#fef3c7; color:#92400e; }
+/* Mobile : une carte par élève, une pastille par séance. */
+.att-cards { display:none; }
+.att-card { display:block; background:white; border:1px solid #eee; border-radius:6px; padding:0.6rem 0.75rem; margin-bottom:0.5rem; text-decoration:none; color:inherit; }
+.att-card-head { display:flex; justify-content:space-between; gap:0.5rem; margin-bottom:0.4rem; }
+.att-dots { display:flex; flex-wrap:wrap; gap:3px; }
+.att-dots span { width:14px; height:14px; border-radius:3px; background:#f3f4f6; }
+.att-dots .cell-present { background:#16a34a; }
+.att-dots .cell-absent { background:#dc2626; }
+.att-dots .cell-excused { background:#d97706; }
+@media (max-width: 640px) {
+    .att-matrix { display:none; }
+    .att-cards { display:block; }
+}
+
+/* ---- Progression par compétence (suivi/_skills_progress.html) ---- */
+@media (max-width: 640px) {
+    /* Nom + statut sur une ligne, puis nombre de séances et dernière évaluation en petit. */
+    .skills-table tr { display:grid; grid-template-columns:1fr auto; column-gap:0.5rem; padding:0.5rem 0; }
+    .skills-table td { display:block; border:none; padding:0 !important; }
+    .sp-name { grid-column:1; }
+    .sp-status { grid-column:2; grid-row:1; }
+    .sp-worked, .sp-eval { grid-column:1 / -1; }
+    .sp-eval:empty { display:none; }
+}
+
+/* ---- Détail de séance (suivi/session_detail.html) ---- */
+.ws-table td { padding:0.3rem 0.5rem; }
+.ws-row[data-worked="1"] td { background:#f0fdf4; }
+.only-worked-on .ws-row:not([data-worked="1"]) { display:none; }
+.student-skills > summary { padding:0.25rem 0; }
+@media (max-width: 640px) {
+    /* Appel : nom, puis présence sur toute la largeur, puis commentaire. */
+    .attendance-table tr { padding:0.6rem 0; }
+    .attendance-table td { display:block; border:none; padding:0.25rem 0; }
+    .attendance-table td.att-name { font-weight:600; }
+    /* Compétences : [case] nom + statut actuel, puis évaluation et commentaire pleine largeur. */
+    .ws-table tr.ws-row { display:grid; grid-template-columns:auto 1fr; column-gap:0.6rem; row-gap:0.35rem; padding:0.6rem 0.25rem; }
+    .ws-table td { display:block; border:none; padding:0 !important; width:auto !important; background:none !important; }
+    .ws-row[data-worked="1"] { background:#f0fdf4; }
+    .ws-cell-check { grid-row:1; align-self:center; }
+    .ws-cell-check input { width:1.5rem; height:1.5rem; }
+    .ws-cell-name { grid-row:1; align-self:center; }
+    .ws-cell-status, .ws-cell-comment { grid-column:1 / -1; }
+    .student-skills { padding:0.5rem !important; }
+    .student-skills > summary { padding:0.5rem 0.25rem; }
+}
+
+/* ---- Liste des cursus (formation/cursus_list.html) ---- */
+.cursus-card {
+  background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  padding: 1.25rem; margin-bottom: 1rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+}
+.badge-active   { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 0.82em; }
+.badge-archived { background: #f3f4f6; color: #6b7280; padding: 2px 8px; border-radius: 4px; font-size: 0.82em; }
+
+/* ---- Détail de cursus (formation/cursus_detail.html) ---- */
+.detail-card {
+  background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  padding: 1.25rem; margin-bottom: 1.5rem;
+}
+.category-block {
+  border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 1rem; overflow: hidden;
+}
+.category-header {
+  background: #f8f9fa; padding: 0.75rem 1rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
+.skill-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.5rem 1rem; border-top: 1px solid #f0f0f0;
+}
+@media (max-width: 640px) {
+  .category-header, .skill-row { padding: 0.6rem 0.75rem; }
+  .add-category-form { flex-wrap: wrap; }
+  .add-category-form input { max-width: none !important; }
+}
+.drag-handle {
+  color: #9ca3af; margin-right: 0.75rem; cursor: grab; user-select: none; font-size: 1.1rem;
+}
+.dragging { opacity: 0.4; }
+.drag-over { border-top: 2px solid #3730a3; }
+
+/* ---- Évaluation (formation/evaluation.html) ---- */
+@media (max-width: 640px) {
+    .eval-table tr { background:none; border-width:0 0 1px; border-radius:0; box-shadow:none; margin:0; padding:0.4rem 0; }
+    .eval-table td { display:block; border:none; padding:0.2rem 0 !important; }
+    .eval-table tr.eval-history td { padding-left:1rem !important; }
+}
+
+/* ---- Import de cursus (formation/formation_import.html) ---- */
+.import-card {
+  background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  padding: 1.5rem; margin-bottom: 1.5rem;
+}
+.json-example {
+  background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 4px;
+  padding: 1rem; font-family: monospace; font-size: 0.85rem;
+  white-space: pre; overflow-x: auto; color: #374151;
+}

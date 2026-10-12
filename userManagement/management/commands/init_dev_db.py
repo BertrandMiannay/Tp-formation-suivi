@@ -2,7 +2,7 @@ import os
 
 from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
@@ -17,6 +17,10 @@ class Command(BaseCommand):
         parser.add_argument("--password")
 
     def handle(self, *args, **options):
+        # Garde-fou : la commande efface la base, elle ne doit jamais tourner en production.
+        if not settings.DEBUG:
+            raise CommandError("init_dev_db efface la base : réservé au développement (DEBUG=True).")
+
         # 1. Superuser credentials: options, then environment (.env), then defaults
         defaults = {"username": "admin", "email": "admin@example.com", "password": "admin"}
         for field, default in defaults.items():

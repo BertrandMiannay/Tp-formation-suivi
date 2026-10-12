@@ -61,7 +61,7 @@
                     </form>
                     {% endif %}
                     <form method="post" action="{% url 'userManagement:user_delete' u.pk %}" style="display:inline;"
-                          onsubmit="return confirm('Supprimer {{ u.email }} ? Cette action est irréversible.');">
+                          onsubmit="return confirm('Supprimer {{ u.email|escapejs }} ? Cette action est irréversible.');">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-danger">Supprimer</button>
                     </form>

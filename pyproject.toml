@@ -1,18 +1,17 @@
 [tool.poetry]
 name = "tp-formation-suivi"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+package-mode = false
+description = "Suivi des élèves en formation plongée (séances, présences, compétences)"
+authors = ["Bertrand Miannay"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.13"
-django = "^5.2.4"
-dotenv = "^0.9.9"
-django-allauth = "^65.14.3"
-django-invitations = "^2.1.0"
+django = "^5.2.18"
+python-dotenv = "^1.1.1"
+django-allauth = "^65.19.7"
 gunicorn = "^23.0.0"
-psycopg2-binary = "^2.9.10"
 dj-database-url = "^2.3.0"
 whitenoise = "^6.9.0"
 reportlab = "^4.4.10"

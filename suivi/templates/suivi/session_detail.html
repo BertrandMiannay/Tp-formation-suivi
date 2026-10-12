@@ -200,28 +200,6 @@
     {% endfor %}
 </div>
 
-<style>
-.ws-table td { padding:0.3rem 0.5rem; }
-.ws-row[data-worked="1"] td { background:#f0fdf4; }
-.only-worked-on .ws-row:not([data-worked="1"]) { display:none; }
-.student-skills > summary { padding:0.25rem 0; }
-@media (max-width: 640px) {
-    /* Appel : nom, puis présence sur toute la largeur, puis commentaire. */
-    .attendance-table tr { padding:0.6rem 0; }
-    .attendance-table td { display:block; border:none; padding:0.25rem 0; }
-    .attendance-table td.att-name { font-weight:600; }
-    /* Compétences : [case] nom + statut actuel, puis évaluation et commentaire pleine largeur. */
-    .ws-table tr.ws-row { display:grid; grid-template-columns:auto 1fr; column-gap:0.6rem; row-gap:0.35rem; padding:0.6rem 0.25rem; }
-    .ws-table td { display:block; border:none; padding:0 !important; width:auto !important; background:none !important; }
-    .ws-row[data-worked="1"] { background:#f0fdf4; }
-    .ws-cell-check { grid-row:1; align-self:center; }
-    .ws-cell-check input { width:1.5rem; height:1.5rem; }
-    .ws-cell-name { grid-row:1; align-self:center; }
-    .ws-cell-status, .ws-cell-comment { grid-column:1 / -1; }
-    .student-skills { padding:0.5rem !important; }
-    .student-skills > summary { padding:0.5rem 0.25rem; }
-}
-</style>
 <script>
 document.querySelectorAll('.student-skills').forEach(function (block) {
     block.addEventListener('change', function (e) {
