@@ -8,7 +8,21 @@ from userManagement.models import Role
 from .models import Cursus, Enrollment, Formation, Member
 
 
+class AccountChoiceField(forms.ModelChoiceField):
+    """Comptes sans fiche élève (encadrant qui suit une formation, élève invité depuis la page Utilisateurs…)."""
+
+    def label_from_instance(self, user):
+        name = user.get_full_name() or (user.username if user.is_active else "invitation en attente")
+        parts = [name, user.email, user.role_label]
+        return ' · '.join(p for p in parts if p)
+
+
 class StudentForm(forms.ModelForm):
+    account = AccountChoiceField(
+        queryset=get_user_model().objects.none(), required=False,
+        label='À partir d\'un compte existant', empty_label='— Aucun : nouvel élève —',
+        help_text="La fiche est rattachée au compte choisi (prénom, nom et email repris du compte).",
+    )
     email = forms.EmailField(
         label='Email', required=False,
         help_text="Facultatif : renseigné, il crée le compte élève (lien d'invitation à transmettre).",
@@ -37,8 +51,31 @@ class StudentForm(forms.ModelForm):
                     "Compte encadrant ou administrateur : l'email ne se modifie pas depuis la fiche élève."
                 )
             del self.fields['formation']  # inscriptions gérées depuis la fiche
+            del self.fields['account']
         else:
             self.fields['formation'].queryset = Formation.objects.active()
+            self.fields['account'].queryset = (
+                get_user_model().objects.filter(student_profile__isnull=True)
+                .order_by('first_name', 'last_name', 'email')
+            )
+            self.selected_account = self._selected_account()
+            if self.selected_account:
+                # L'email est celui du compte ; prénom et nom en sont repris s'ils sont renseignés.
+                self.fields['email'].disabled = True
+                self.fields['email'].initial = self.selected_account.email
+                self.fields['email'].help_text = "Email du compte choisi."
+                if not self.is_bound:
+                    for field in ('first_name', 'last_name'):
+                        value = getattr(self.selected_account, field)
+                        if value and not self.initial.get(field):
+                            self.initial[field] = value
+
+    def _selected_account(self):
+        """Compte choisi (POST, ou ?user= à l'affichage), s'il n'a pas encore de fiche."""
+        pk = self.data.get('account') if self.is_bound else self.initial.get('account')
+        if not str(pk or '').isdigit():
+            return None
+        return self.fields['account'].queryset.filter(pk=pk).first()
 
     @property
     def manages_account_email(self):
@@ -47,6 +84,8 @@ class StudentForm(forms.ModelForm):
         return user is None or user.role == Role.STUDENT
 
     def clean_email(self):
+        if getattr(self, 'selected_account', None):
+            return self.selected_account.email
         if not self.manages_account_email:
             return self.instance.user.email
         email = self.cleaned_data['email'].strip().lower()

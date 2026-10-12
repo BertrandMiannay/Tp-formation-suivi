@@ -419,3 +419,51 @@ class StudentAccountSecurityTests(SuiviFixtures):
         resp = self.client.get(reverse('suivi-attendance'), {'formation': '1&vue=liste'})
         self.assertRedirects(resp, reverse('suivi-students') + '?vue=presences&formation=1%26vue%3Dliste',
                              fetch_redirect_response=False)
+
+
+class StudentFromAccountTests(SuiviFixtures):
+    def setUp(self):
+        super().setUp()
+        self.account = get_user_model().objects.create_user(
+            'jdupont', 'jean@example.com', 'pwd', first_name='Jean', last_name='Dupont')
+        self.account.groups.add(Group.objects.get(name='instructor'))
+
+    def test_prefill_from_user_param(self):
+        resp = self.client.get(reverse('eleve-create'), {'user': self.account.pk})
+        form = resp.context['form']
+        self.assertEqual(form.initial['first_name'], 'Jean')
+        self.assertEqual(form.initial['last_name'], 'Dupont')
+        self.assertTrue(form.fields['email'].disabled)
+        self.assertContains(resp, 'jean@example.com')
+
+    def test_accounts_with_sheet_are_not_offered(self):
+        form = self.client.get(reverse('eleve-create')).context['form']
+        offered = set(form.fields['account'].queryset)
+        self.assertIn(self.account, offered)
+        self.assertNotIn(self.student_user, offered)  # Alice a déjà sa fiche
+        # ?user= d'un compte qui a déjà une fiche : ignoré
+        form = self.client.get(reverse('eleve-create'), {'user': self.student_user.pk}).context['form']
+        self.assertFalse(form.fields['email'].disabled)
+
+    def test_create_links_chosen_account(self):
+        self.client.post(reverse('eleve-create'), {
+            'account': self.account.pk, 'first_name': 'Jean', 'last_name': 'Dupont',
+            'email': 'autre@example.com', 'formation': self.formation.pk,
+        })
+        member = Member.objects.get(first_name='Jean')
+        self.assertEqual(member.user, self.account)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.email, 'jean@example.com')
+        self.assertTrue(Enrollment.objects.filter(member=member, formation=self.formation).exists())
+
+    def test_account_without_email_is_linked(self):
+        self.account.email = ''
+        self.account.save()
+        self.client.post(reverse('eleve-create'), {'account': self.account.pk, 'first_name': 'Jean', 'last_name': 'Dupont'})
+        self.assertEqual(Member.objects.get(first_name='Jean').user, self.account)
+
+    def test_account_with_sheet_is_rejected(self):
+        resp = self.client.post(reverse('eleve-create'), {
+            'account': self.student_user.pk, 'first_name': 'Alice', 'last_name': 'Bis'})
+        self.assertIn('account', resp.context['form'].errors)
+        self.assertFalse(Member.objects.filter(last_name='Bis').exists())

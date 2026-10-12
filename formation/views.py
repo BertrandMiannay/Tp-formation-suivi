@@ -57,9 +57,14 @@ def student_create(request):
         if form.is_valid():
             email = form.cleaned_data['email']
             formation = form.cleaned_data['formation']
+            account = form.cleaned_data['account']
             with transaction.atomic():
                 member = form.save()
-                user = attach_account(member, email) if email else None
+                if account:
+                    member.user = user = account
+                    member.save(update_fields=['user'])
+                else:
+                    user = attach_account(member, email) if email else None
                 if formation:
                     Enrollment.objects.create(member=member, formation=formation)
             logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk if user else None, request.user.username)
@@ -69,7 +74,7 @@ def student_create(request):
             ))
             return redirect('suivi-student-detail', pk=member.pk)
     else:
-        form = StudentForm(initial={'formation': request.GET.get('formation')})
+        form = StudentForm(initial={'formation': request.GET.get('formation'), 'account': request.GET.get('user')})
     return render(request, 'formation/student_form.html', {'form': form, 'member': None})
 
 
