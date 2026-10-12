@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from django.contrib.auth import get_user_model
@@ -513,3 +514,34 @@ class StudentImportDeleteTests(SuiviFixtures):
         self.client.force_login(self.student_user)
         self.client.post(reverse('eleve-delete', args=[self.bob.pk]))
         self.assertTrue(Member.objects.filter(pk=self.bob.pk).exists())
+
+
+class CursusJsonExportTests(SuiviFixtures):
+    def setUp(self):
+        admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
+        admin.groups.add(Group.objects.get(name='admin'))
+        self.client.force_login(admin)
+
+    def test_export_downloads_reimportable_json(self):
+        resp = self.client.get(reverse('saison-cursus-export', args=[self.cursus.pk]))
+        self.assertEqual(resp['Content-Type'], 'application/json; charset=utf-8')
+        self.assertEqual(resp['Content-Disposition'], 'attachment; filename="cursus-niveau-1-2026-01-01.json"')
+        data = json.loads(resp.content)
+        self.assertEqual(data, {'name': 'Niveau 1', 'date': '2026-01-01', 'categories': [
+            {'name': 'Technique', 'skills': [{'name': 'Vidage de masque'}, {'name': 'Lâcher / reprise embout'}]},
+        ]})
+        # Réimport du fichier exporté : même structure
+        self.client.post(reverse('saison-cursus-importer'), {'json_data': resp.content.decode()})
+        copy = Cursus.objects.filter(name='Niveau 1').exclude(pk=self.cursus.pk).get()
+        self.assertEqual(
+            [(c.name, [s.name for s in c.skills.order_by('order')]) for c in copy.categories.order_by('order')],
+            [('Technique', ['Vidage de masque', 'Lâcher / reprise embout'])],
+        )
+
+    def test_export_link_on_cursus_list(self):
+        self.assertContains(self.client.get(reverse('saison-cursus')), reverse('saison-cursus-export', args=[self.cursus.pk]))
+
+    def test_export_reserved_to_admins(self):
+        self.client.force_login(self.instructor)
+        resp = self.client.get(reverse('saison-cursus-export', args=[self.cursus.pk]))
+        self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False)

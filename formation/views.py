@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.formats import date_format
+from django.utils.text import slugify
 
 from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm
 from formation.models import (
@@ -462,23 +463,36 @@ def cursus_detail(request, pk):
             return redirect('saison-cursus-detail', pk=pk)
 
     categories = cursus.categories.prefetch_related('skills').all()
-    cursus_json = json.dumps({
-        'name': cursus.name,
-        'date': cursus.date.isoformat(),
-        'categories': [
-            {
-                'name': cat.name,
-                'skills': [{'name': skill.name} for skill in cat.skills.all()],
-            }
-            for cat in categories
-        ],
-    }, indent=2, ensure_ascii=False)
     return render(request, 'formation/cursus_detail.html', {
         'cursus': cursus,
         'categories': categories,
-        'cursus_json': cursus_json,
+        'cursus_json': _cursus_json(cursus, categories),
         'active_tab': 'cursus',
     })
+
+
+def _cursus_json(cursus, categories=None):
+    """Cursus au format JSON d'import (`cursus_import_json`) : nom, date, catégories et compétences dans l'ordre."""
+    if categories is None:
+        categories = cursus.categories.prefetch_related('skills')
+    return json.dumps({
+        'name': cursus.name,
+        'date': cursus.date.isoformat(),
+        'categories': [
+            {'name': cat.name, 'skills': [{'name': skill.name} for skill in cat.skills.all()]}
+            for cat in categories
+        ],
+    }, indent=2, ensure_ascii=False)
+
+
+@admin_required
+def cursus_export_json(request, pk):
+    """Téléchargement du cursus en fichier .json, réimportable tel quel."""
+    cursus = get_object_or_404(Cursus, pk=pk)
+    filename = f"cursus-{slugify(cursus.name) or cursus.pk}-{cursus.date.isoformat()}.json"
+    response = HttpResponse(_cursus_json(cursus), content_type='application/json; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 
 @admin_required
