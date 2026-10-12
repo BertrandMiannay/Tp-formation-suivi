@@ -57,11 +57,7 @@
                                     </select>
                                 </td>
                                 <td style="padding:0.4rem 0.5rem;">
-                                    <div class="comment-field">
-                                    <input type="text" name="skill_{{ skill.pk }}_comment" placeholder="Commentaire facultatif"
-                                        style="width:100%; padding:0.25rem 0.4rem; border:1px solid #d1d5db; border-radius:3px; font-size:0.85rem; box-sizing:border-box;">
-                                    <label class="private-toggle" title="Coché : commentaire réservé à l'équipe encadrante (non affiché à l'élève)"><input type="checkbox" name="skill_{{ skill.pk }}_private" value="1"> 🔒 Équipe</label>
-                                    </div>
+                                    {% include "_comment_fields.html" with prefix="skill" pk=skill.pk comment='' staff_comment='' %}
                                 </td>
                             </tr>
                             {% if skill.evaluations %}
@@ -75,7 +71,8 @@
                                             {% elif ev.status == 'in_progress' %}<span style="color:#92400e;">~ En cours</span>
                                             {% else %}<span style="color:#9ca3af;">— Non acquis</span>{% endif %}
                                         </span>
-                                        {% if ev.comment %}<span style="color:#374151;">{% if ev.comment_private %}<span class="private-mark" title="Réservé à l'équipe encadrante">🔒</span> {% endif %}{{ ev.comment }}</span>{% endif %}
+                                        {% if ev.comment %}<span style="color:#374151;">{{ ev.comment }}</span>{% endif %}
+                                        {% if ev.staff_comment %}<span style="color:#3730a3;"><span class="private-mark" title="Note réservée à l'équipe encadrante">🔒</span> {{ ev.staff_comment }}</span>{% endif %}
                                         {% if ev.author %}<span style="white-space:nowrap; color:#9ca3af;">par {{ ev.author }}</span>{% endif %}
                                         <button type="submit" name="_delete_ev" value="{{ ev.pk }}"
                                             formaction="{% url 'eleve-evaluation-delete' member.pk ev.pk %}"

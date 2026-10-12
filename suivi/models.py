@@ -51,9 +51,8 @@ class Attendance(models.Model):
     member  = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='attendances')
     status  = models.CharField(max_length=20, choices=Status.choices)
     comment = models.CharField(max_length=255, blank=True)
-    comment_private = models.BooleanField(
-        'Commentaire réservé à l\'équipe', default=True,
-        help_text="Coché : le commentaire n'est pas affiché à l'élève dans « Mon suivi ».")
+    staff_comment = models.CharField('Note équipe', max_length=255, blank=True,
+                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
 
     class Meta:
         verbose_name        = 'Présence'
@@ -75,9 +74,8 @@ class WorkedSkill(models.Model):
     status  = models.CharField(max_length=20, choices=MemberSkill.SkillStatus.choices, blank=True,
                                help_text="Évaluation lors de la séance (vide = travaillée sans évaluation)")
     comment = models.CharField(max_length=255, blank=True)
-    comment_private = models.BooleanField(
-        'Commentaire réservé à l\'équipe', default=False,
-        help_text="Coché : le commentaire n'est pas affiché à l'élève dans « Mon suivi ».")
+    staff_comment = models.CharField('Note équipe', max_length=255, blank=True,
+                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
     author  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                 related_name='+', verbose_name='Saisi par')
 

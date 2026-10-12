@@ -21,7 +21,7 @@
                     <td class="sp-name" style="font-size:0.9rem;">{{ s.name }}</td>
                     <td class="sp-status" style="width:190px;"><span class="badge badge-{{ s.status }}">{{ s.status_display }}</span></td>
                     <td class="sp-worked muted" style="width:170px; font-size:0.85rem;">{% if s.worked %}{{ s.worked }} séance{{ s.worked|pluralize }}{% else %}pas encore travaillée{% endif %}</td>
-                    <td class="sp-eval muted" style="font-size:0.8rem;">{% if s.last_eval %}{{ s.last_eval.date|date:"d/m/Y" }}{% if s.last_eval.author %} · {{ s.last_eval.author.get_full_name|default:s.last_eval.author.username }}{% endif %}{% if s.last_eval.comment %} — {% if staff_view and s.last_eval.comment_private %}<span class="private-mark" title="Réservé à l'équipe encadrante">🔒</span> {% endif %}{{ s.last_eval.comment }}{% endif %}{% endif %}</td>
+                    <td class="sp-eval muted" style="font-size:0.8rem;">{% if s.last_eval %}{{ s.last_eval.date|date:"d/m/Y" }}{% if s.last_eval.author %} · {{ s.last_eval.author.get_full_name|default:s.last_eval.author.username }}{% endif %}{% if s.last_eval.comment %} — {{ s.last_eval.comment }}{% endif %}{% if staff_view and s.last_eval.staff_comment %} <span class="staff-note"><span class="private-mark" title="Note réservée à l'équipe encadrante">🔒</span> {{ s.last_eval.staff_comment }}</span>{% endif %}{% endif %}</td>
                 </tr>
             {% endfor %}
             </tbody>

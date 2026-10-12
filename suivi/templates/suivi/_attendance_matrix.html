@@ -21,7 +21,7 @@
             <td><a href="{% url 'suivi-student-detail' row.member.pk %}" style="color:#1a1a2e;">{{ row.member.last_name }} {{ row.member.first_name }}</a></td>
             {% for cell in row.cells %}{% with a=cell.att %}
                 {% if a %}
-                <td class="cell-{{ a.status }}" title="{{ a.get_status_display }}{% if a.comment %} — {{ a.comment }}{% endif %}">
+                <td class="cell-{{ a.status }}" title="{{ a.get_status_display }}{% if a.comment %} — {{ a.comment }}{% endif %}{% if a.staff_comment %} — 🔒 {{ a.staff_comment }}{% endif %}">
                     {% if a.status == 'present' %}P{% elif a.status == 'absent' %}A{% else %}E{% endif %}
                 </td>
                 {% else %}

@@ -195,9 +195,8 @@ class SkillEvaluation(models.Model):
     date    = models.DateField()
     status  = models.CharField(max_length=20, choices=MemberSkill.SkillStatus.choices)
     comment = models.TextField(blank=True)
-    comment_private = models.BooleanField(
-        'Commentaire réservé à l\'équipe', default=False,
-        help_text="Coché : le commentaire n'est pas affiché à l'élève dans « Mon suivi ».")
+    staff_comment = models.TextField('Note équipe', blank=True,
+                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
     author  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                 related_name='+', verbose_name='Évaluateur')
 
