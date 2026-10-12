@@ -19,6 +19,7 @@ from formation.forms import FormationForm, QuickStudentForm, StudentForm
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
+from suivi.models import TrainingSession
 from suivi.views import attendance_matrix
 from userManagement.views import admin_required, club_staff_required, create_invited_user, renew_invitation
 from userManagement.models import Role
@@ -275,8 +276,16 @@ def season_gestion(request):
 @admin_required
 def set_current_season(request, pk):
     if request.method == 'POST':
-        Season.objects.update(current=False)
-        Season.objects.filter(pk=pk).update(current=True)
+        season = get_object_or_404(Season, pk=pk)
+        with transaction.atomic():
+            Season.objects.update(current=False)
+            Season.objects.filter(pk=season.pk).update(current=True)
+            # Séances créées sans saison en cours : rattachées à la saison activée,
+            # sinon elles disparaîtraient de la liste filtrée sur la saison en cours.
+            attached = TrainingSession.objects.filter(season__isnull=True).update(season=season)
+        if attached:
+            logger.info("SEASON_ATTACH_SESSIONS season=%s count=%s by=%s", season.pk, attached, request.user.username)
+            messages.info(request, f"{attached} séance(s) sans saison rattachée(s) à {season}.")
     return redirect('saison-gestion')
 
 
