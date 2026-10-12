@@ -164,8 +164,7 @@
                 <div class="form-group"><label for="{{ note_form.date.id_for_label }}">{{ note_form.date.label }}</label>{{ note_form.date }}{{ note_form.date.errors }}</div>
                 <div class="form-group"><label for="{{ note_form.session.id_for_label }}">{{ note_form.session.label }}</label>{{ note_form.session }}{{ note_form.session.errors }}</div>
             </div>
-            <div class="form-group"><label for="{{ note_form.content.id_for_label }}">{{ note_form.content.label }}</label>{{ note_form.content }}{{ note_form.content.errors }}</div>
-            <div class="form-group"><label for="{{ note_form.visibility.id_for_label }}">{{ note_form.visibility.label }}</label>{{ note_form.visibility }}{{ note_form.visibility.errors }}</div>
+            <div class="form-group"><label>Note</label>{% include "_comment_fields.html" with name="content" staff_name="staff_content" rows=3 comment=note_form.content.value staff_comment=note_form.staff_content.value placeholder="Observation, conseil, point à retravailler…" %}</div>
             <button type="submit" class="btn btn-primary">Ajouter</button>
         </form>
     </details>
@@ -175,16 +174,9 @@
             <span>
                 <strong>{{ note.date|date:"d/m/Y" }}</strong>
                 {% if note.session %}<a href="{% url 'suivi-session-detail' note.session.pk %}" class="muted">{{ note.session.title|default:"séance" }}</a>{% endif %}
-                <span class="badge badge-{{ note.visibility }}">{{ note.get_visibility_display }}</span>
                 {% if note.author %}<span class="muted">par {{ note.author.get_full_name|default:note.author.username }}</span>{% endif %}
             </span>
             <span style="display:flex; gap:0.75rem;">
-                <form method="post" class="inline-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="_action" value="toggle_note">
-                    <input type="hidden" name="note_pk" value="{{ note.pk }}">
-                    <button type="submit" class="link-btn" style="color:#1a1a2e;">{% if note.visibility == 'staff' %}Rendre visible par l'élève{% else %}Réserver à l'équipe{% endif %}</button>
-                </form>
                 <form method="post" class="inline-form" onsubmit="return confirm('Supprimer cette note ?');">
                     {% csrf_token %}
                     <input type="hidden" name="_action" value="delete_note">
@@ -193,7 +185,7 @@
                 </form>
             </span>
         </div>
-        <p style="white-space:pre-line; margin-top:0.4rem;">{{ note.content }}</p>
+        {% include "suivi/_note_body.html" %}
     </div>
     {% empty %}
     <p class="muted">Aucune note.</p>

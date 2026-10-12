@@ -357,13 +357,11 @@ def session_detail(request, pk):
         elif action == 'note':
             member = get_object_or_404(Member, pk=request.POST.get('member_id'))
             content = request.POST.get('content', '').strip()
-            visibility = request.POST.get('visibility')
-            if visibility not in StudentNote.Visibility.values:
-                visibility = StudentNote.Visibility.STAFF
-            if content:
+            staff_content = request.POST.get('staff_content', '').strip()
+            if content or staff_content:
                 StudentNote.objects.create(
                     member=member, session=session, date=session.date,
-                    content=content, visibility=visibility, author=request.user,
+                    content=content, staff_content=staff_content, author=request.user,
                 )
                 messages.success(request, f"Note ajoutée pour {member.first_name} {member.last_name}.")
             return redirect(reverse('suivi-session-detail', args=[pk]) + '#notes')
@@ -421,7 +419,6 @@ def session_detail(request, pk):
         'attendance_choices': Attendance.Status.choices,
         'skill_rows': skill_rows,
         'status_choices': MemberSkill.SkillStatus.choices,
-        'visibility_choices': StudentNote.Visibility.choices,
         'session_notes': session.student_notes.select_related('member', 'author'),
         'addable_members': addable_members,
         'session_formations': session_formations,
@@ -536,15 +533,6 @@ def student_detail(request, pk):
                 return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
             open_form = 'note'
 
-        elif action == 'toggle_note':
-            note = get_object_or_404(StudentNote, pk=request.POST.get('note_pk'), member=member)
-            note.visibility = (
-                StudentNote.Visibility.STAFF if note.visibility == StudentNote.Visibility.STUDENT
-                else StudentNote.Visibility.STUDENT
-            )
-            note.save(update_fields=['visibility'])
-            return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
-
         elif action == 'delete_note':
             StudentNote.objects.filter(pk=request.POST.get('note_pk'), member=member).delete()
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
@@ -587,7 +575,9 @@ def my_tracking(request):
         sheets.append({
             'member': member,
             **_tracking_sheet(member, season, for_student=True),
-            'notes': member.student_notes.filter(visibility=StudentNote.Visibility.STUDENT).select_related('session', 'author'),
+            # Seule la partie visible des notes est transmise à l'élève.
+            'notes': member.student_notes.exclude(content='').select_related('session', 'author')
+                     .defer('staff_content'),
         })
     return render(request, 'suivi/my_tracking.html', {
         'sheets': sheets,

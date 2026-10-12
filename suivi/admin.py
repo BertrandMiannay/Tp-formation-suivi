@@ -25,8 +25,7 @@ class AttendanceAdmin(admin.ModelAdmin):
 
 @admin.register(StudentNote)
 class StudentNoteAdmin(admin.ModelAdmin):
-    list_display = ('date', 'member', 'visibility', 'author')
-    list_filter  = ('visibility',)
+    list_display = ('date', 'member', 'author')
 
 
 @admin.register(WorkedSkill)

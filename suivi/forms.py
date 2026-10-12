@@ -35,11 +35,9 @@ class TrainingSessionForm(forms.ModelForm):
 class StudentNoteForm(forms.ModelForm):
     class Meta:
         model  = StudentNote
-        fields = ['date', 'content', 'visibility', 'session']
+        fields = ['date', 'content', 'staff_content', 'session']
         labels = {
             'date': 'Date',
-            'content': 'Note',
-            'visibility': 'Visibilité',
             'session': 'Séance',
         }
         widgets = {
@@ -51,3 +49,11 @@ class StudentNoteForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if member is not None:
             self.fields['session'].queryset = TrainingSession.objects.filter(attendances__member=member).distinct()
+
+    def clean(self):
+        cleaned = super().clean()
+        cleaned['content'] = (cleaned.get('content') or '').strip()
+        cleaned['staff_content'] = (cleaned.get('staff_content') or '').strip()
+        if not cleaned['content'] and not cleaned['staff_content']:
+            raise forms.ValidationError("La note est vide.")
+        return cleaned
