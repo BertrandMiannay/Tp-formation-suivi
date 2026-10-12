@@ -1,7 +1,7 @@
 {# Tableau des présences élèves × séances. Attend `sessions` et `rows` (voir suivi.views.attendance_matrix). #}
 <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;">
-    <span class="hide-sm">P = présent · A = absent · E = excusé · – = non renseigné</span>
-    <span class="show-sm"><span style="color:#16a34a;">■</span> présent · <span style="color:#dc2626;">■</span> absent · <span style="color:#d97706;">■</span> excusé, dans l'ordre des séances</span>
+    <span class="hide-sm">P = présent · A = absent · – = non renseigné</span>
+    <span class="show-sm"><span style="color:#16a34a;">■</span> présent · <span style="color:#dc2626;">■</span> absent, dans l'ordre des séances</span>
 </p>
 <div class="att-matrix">
 <table>
@@ -22,7 +22,7 @@
             {% for cell in row.cells %}{% with a=cell.att %}
                 {% if a %}
                 <td class="cell-{{ a.status }}" title="{{ a.get_status_display }}{% if a.comment %} — {{ a.comment }}{% endif %}{% if a.staff_comment %} — 🔒 {{ a.staff_comment }}{% endif %}">
-                    {% if a.status == 'present' %}P{% elif a.status == 'absent' %}A{% else %}E{% endif %}
+                    {% if a.status == 'present' %}P{% else %}A{% endif %}
                 </td>
                 {% else %}
                 <td class="muted">–</td>

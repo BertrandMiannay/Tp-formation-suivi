@@ -29,14 +29,14 @@ Puis :
   noté présent et évalué normalement.
 - **Saison** : regroupe les séances (la saison active est celle des nouvelles séances et des statistiques de présence).
 - **Séance** : date, formations travaillées, encadrants. Les élèves attendus sont ceux inscrits (en formation) à l'une de ces formations.
-- **Appel** : présent / absent / absent excusé, avec commentaire.
+- **Appel** : présent / absent, avec commentaire.
 - **Compétences** : saisies par élève et par séance (travaillée, évaluation du jour, commentaire).
   Une évaluation met à jour le statut de l'élève et est historisée avec son auteur.
 - **Notes** : sur la fiche élève ; chaque note est réservée à l'équipe ou visible par l'élève.
 - **Mon suivi** (consultation uniquement) : l'élève connecté voit ses formations, présences, compétences et les notes qui lui sont destinées.
 - **Export PDF** de l'évaluation par cursus.
-- **Vue mobile** : menu repliable, tableaux affichés en cartes, appel avec gros boutons présent / absent /
-  excusé et bouton d'enregistrement collé en bas d'écran, saisie des compétences adaptée au tactile
+- **Vue mobile** : menu repliable, tableaux affichés en cartes, appel avec gros boutons présent / absent
+  et bouton d'enregistrement collé en bas d'écran, saisie des compétences adaptée au tactile
   (styles dans `templates/base.html` et `suivi/templates/suivi/base.html`, breakpoint 640px).
 
 ## Importer une formation (JSON)
