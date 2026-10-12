@@ -154,23 +154,30 @@ class SuiviTestCase(SuiviFixtures):
 
     def test_notes(self):
         url = reverse('suivi-student-detail', args=[self.alice.pk])
-        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Privé', 'visibility': 'staff'})
-        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Bravo !', 'visibility': 'student'})
+        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'staff_content': 'Privé'})
+        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Bravo !',
+                               'staff_content': 'A surveiller'})
+        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': '  '})
         self.assertEqual(StudentNote.objects.count(), 2)
         resp = self.client.get(url)
         self.assertContains(resp, 'Privé')
+        self.assertContains(resp, 'A surveiller')
 
-        # L'élève ne voit que les notes qui lui sont destinées
+        # Depuis une séance : les deux parties dans la même note
+        session = self._create_session()
+        self.client.post(reverse('suivi-session-detail', args=[session.pk]), {
+            '_action': 'note', 'member_id': self.alice.pk, 'content': 'Belle séance', 'staff_content': 'Fatigué',
+        })
+        note = StudentNote.objects.get(session=session)
+        self.assertEqual((note.content, note.staff_content), ('Belle séance', 'Fatigué'))
+
+        # L'élève ne voit que la partie qui lui est destinée
         self.client.force_login(self.student_user)
         resp = self.client.get(reverse('suivi-mine'))
         self.assertContains(resp, 'Bravo !')
-        self.assertNotContains(resp, 'Privé')
-
-        note = StudentNote.objects.get(content='Privé')
-        self.client.force_login(self.instructor)
-        self.client.post(url, {'_action': 'toggle_note', 'note_pk': note.pk})
-        note.refresh_from_db()
-        self.assertEqual(note.visibility, 'student')
+        self.assertContains(resp, 'Belle séance')
+        for hidden in ['Privé', 'A surveiller', 'Fatigué']:
+            self.assertNotContains(resp, hidden)
 
     def test_students_cannot_access_staff_pages(self):
         session = self._create_session()
@@ -181,7 +188,7 @@ class SuiviTestCase(SuiviFixtures):
         ]:
             self.assertRedirects(self.client.get(reverse(name, args=args)), reverse('home'), fetch_redirect_response=False)
         self.client.post(reverse('suivi-student-detail', args=[self.alice.pk]), {
-            '_action': 'add_note', 'date': '2026-10-07', 'content': 'x', 'visibility': 'student',
+            '_action': 'add_note', 'date': '2026-10-07', 'content': 'x',
         })
         self.assertFalse(StudentNote.objects.exists())
 

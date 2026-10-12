@@ -1,11 +1,21 @@
 {% comment %}
 Commentaire visible par l'élève + note réservée à l'équipe (dépliée au clic sur 🔒 si vide).
-Paramètres : prefix, pk (noms `<prefix>_<pk>_comment` / `<prefix>_<pk>_staff_comment`), comment, staff_comment, placeholder.
+Paramètres : prefix, pk (noms `<prefix>_<pk>_comment` / `<prefix>_<pk>_staff_comment`), ou name / staff_name ;
+comment, staff_comment, placeholder ; rows (zones de texte multilignes au lieu de champs d'une ligne).
 {% endcomment %}
 <div class="comment-field">
-    <input type="text" name="{{ prefix }}_{{ pk }}_comment" value="{{ comment|default:'' }}" placeholder="{{ placeholder|default:'Commentaire' }} (visible par l'élève)">
+    {% if rows %}
+    <textarea name="{% if name %}{{ name }}{% else %}{{ prefix }}_{{ pk }}_comment{% endif %}" rows="{{ rows }}" placeholder="{{ placeholder|default:'Commentaire' }} (visible par l'élève)">{{ comment|default:'' }}</textarea>
+    {% else %}
+    <input type="text" name="{% if name %}{{ name }}{% else %}{{ prefix }}_{{ pk }}_comment{% endif %}" value="{{ comment|default:'' }}" placeholder="{{ placeholder|default:'Commentaire' }} (visible par l'élève)">
+    {% endif %}
     <button type="button" class="staff-toggle" title="Rendre privé" aria-label="Rendre privé" {% if staff_comment %}hidden{% endif %}
             onclick="const i = this.nextElementSibling; i.hidden = false; i.focus(); this.hidden = true;">🔒</button>
-    <input type="text" class="staff-comment" name="{{ prefix }}_{{ pk }}_staff_comment" value="{{ staff_comment|default:'' }}"
+    {% if rows %}
+    <textarea class="staff-comment" name="{% if staff_name %}{{ staff_name }}{% else %}{{ prefix }}_{{ pk }}_staff_comment{% endif %}" rows="{{ rows }}"
+              placeholder="🔒 Note équipe (non visible par l'élève)" title="Note réservée à l'équipe encadrante" {% if not staff_comment %}hidden{% endif %}>{{ staff_comment|default:'' }}</textarea>
+    {% else %}
+    <input type="text" class="staff-comment" name="{% if staff_name %}{{ staff_name }}{% else %}{{ prefix }}_{{ pk }}_staff_comment{% endif %}" value="{{ staff_comment|default:'' }}"
            placeholder="🔒 Note équipe (non visible par l'élève)" title="Note réservée à l'équipe encadrante" {% if not staff_comment %}hidden{% endif %}>
+    {% endif %}
 </div>

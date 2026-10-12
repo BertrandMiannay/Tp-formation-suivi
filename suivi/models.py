@@ -91,15 +91,14 @@ class WorkedSkill(models.Model):
 
 
 class StudentNote(models.Model):
-    class Visibility(models.TextChoices):
-        STAFF   = 'staff',   'Équipe encadrante uniquement'
-        STUDENT = 'student', "Visible par l'élève"
+    """Note sur un élève : partie visible par l'élève et/ou note réservée à l'équipe."""
 
     member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='student_notes')
     session    = models.ForeignKey(TrainingSession, null=True, blank=True, on_delete=models.SET_NULL, related_name='student_notes')
     date       = models.DateField()
-    content    = models.TextField()
-    visibility = models.CharField(max_length=20, choices=Visibility.choices, default=Visibility.STAFF)
+    content    = models.TextField('Note', blank=True, help_text="Visible par l'élève dans « Mon suivi ».")
+    staff_content = models.TextField('Note équipe', blank=True,
+                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
     author     = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -109,4 +108,4 @@ class StudentNote(models.Model):
         ordering            = ['-date', '-pk']
 
     def __str__(self):
-        return f"{self.member} — {self.date:%d/%m/%Y} ({self.get_visibility_display()})"
+        return f"{self.member} — {self.date:%d/%m/%Y}"
