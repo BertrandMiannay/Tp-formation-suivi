@@ -44,10 +44,10 @@ def _formation_filter(request):
 
 
 def _attendance_stats(attendances):
-    stats = {'present': 0, 'absent': 0, 'excused': 0}
+    stats = {'present': 0, 'absent': 0}
     for a in attendances:
         stats[a.status] = stats.get(a.status, 0) + 1
-    stats['total'] = stats['present'] + stats['absent'] + stats['excused']
+    stats['total'] = stats['present'] + stats['absent']
     stats['rate'] = round(100 * stats['present'] / stats['total']) if stats['total'] else None
     return stats
 

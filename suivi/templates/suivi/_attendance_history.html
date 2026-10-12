@@ -2,7 +2,6 @@
     <div class="stat"><div class="value">{% if stats.rate is not None %}{{ stats.rate }} %{% else %}—{% endif %}</div><div class="label">Assiduité</div></div>
     <div class="stat"><div class="value">{{ stats.present }}</div><div class="label">Présences</div></div>
     <div class="stat"><div class="value">{{ stats.absent }}</div><div class="label">Absences</div></div>
-    <div class="stat"><div class="value">{{ stats.excused }}</div><div class="label">Absences excusées</div></div>
 </div>
 {% if attendances %}
 <table>

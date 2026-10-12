@@ -82,7 +82,7 @@ class SuiviTestCase(SuiviFixtures):
         self.client.post(url, {
             '_action': 'attendance',
             f'att_{self.alice.pk}': 'present',
-            f'att_{self.bob.pk}': 'excused', f'att_{self.bob.pk}_comment': 'malade',
+            f'att_{self.bob.pk}': 'absent', f'att_{self.bob.pk}_comment': 'malade',
         })
         self.assertEqual(Attendance.objects.get(member=self.alice).status, 'present')
         self.assertEqual(Attendance.objects.get(member=self.bob).comment, 'malade')
@@ -119,7 +119,7 @@ class SuiviTestCase(SuiviFixtures):
 
         resp = self.client.get(url)
         self.assertContains(resp, f'id="eleve-{self.alice.pk}"')
-        self.assertNotContains(resp, f'id="eleve-{self.bob.pk}"')  # excusé, rien de saisi
+        self.assertNotContains(resp, f'id="eleve-{self.bob.pk}"')  # absent, rien de saisi
 
         # Désélectionner un statut supprime la présence
         self.client.post(url, {'_action': 'attendance', f'att_{self.alice.pk}': 'present'})

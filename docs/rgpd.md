@@ -45,7 +45,7 @@ Tp-formation-suivi est une application web utilisée par un club de plongée pou
 
 | Modèle | Contenu | Visible par l'élève |
 |---|---|---|
-| `Attendance` | Présence à une séance (présent / absent / excusé) + commentaire | Oui |
+| `Attendance` | Présence à une séance (présent / absent) + commentaire | Oui |
 | `WorkedSkill` | Compétence travaillée en séance, évaluation du jour, commentaire, auteur | Oui |
 | `MemberSkill` / `SkillEvaluation` | Statut courant et historique des évaluations, commentaire, évaluateur | Oui |
 | `StudentNote` | Remarque libre de l'encadrement | Seulement si visibilité « élève » |

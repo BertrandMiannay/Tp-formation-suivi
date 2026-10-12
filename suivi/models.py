@@ -45,7 +45,6 @@ class Attendance(models.Model):
     class Status(models.TextChoices):
         PRESENT = 'present', 'Présent'
         ABSENT  = 'absent',  'Absent'
-        EXCUSED = 'excused', 'Absent excusé'
 
     session = models.ForeignKey(TrainingSession, on_delete=models.CASCADE, related_name='attendances')
     member  = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='attendances')
