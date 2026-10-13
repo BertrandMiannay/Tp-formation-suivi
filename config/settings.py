@@ -41,9 +41,6 @@ SECRET_KEY = _secret_key
 # Version déployée (n° de publication, commit, date de build), injectée dans l'image Docker.
 APP_VERSION = os.environ.get('APP_VERSION', 'dev')
 
-# Nom du club créé par défaut (rattachement des données existantes, modifiable ensuite dans l'admin)
-DEFAULT_CLUB_NAME = os.environ.get('DEFAULT_CLUB_NAME', 'Mon club')
-
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 CSRF_TRUSTED_ORIGINS = [

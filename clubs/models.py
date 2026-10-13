@@ -1,5 +1,7 @@
-from django.conf import settings
 from django.db import models
+
+
+DEFAULT_CLUB_NAME = 'Club'
 
 
 class Club(models.Model):
@@ -27,5 +29,5 @@ def get_default_club():
     les vues ne travaillent pas encore sur un club actif."""
     club = Club.objects.order_by('pk').first()
     if club is None:
-        club = Club.objects.create(name=settings.DEFAULT_CLUB_NAME)
+        club = Club.objects.create(name=DEFAULT_CLUB_NAME)
     return club.pk

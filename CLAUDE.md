@@ -22,7 +22,7 @@ python manage.py test
 Settings require `SECRET_KEY` unless `DEBUG=True` (dev). `DATABASE_URL` is optional (SQLite by default ; PostgreSQL would need a driver such as `psycopg` added back to the dependencies).
 
 Migrations: a single `0001_initial` per app (squashed before the first deployment); add new migrations on top from now on. `suivi/0008_comment` copies the former per-model comments (attendance, worked skill, student note, skill evaluation) into `Comment`; `suivi/0009` and `formation/0004` then drop the old fields and `StudentNote`.
-`clubs/0002_default_club` crée le club par défaut (`DEFAULT_CLUB_NAME`, « Mon club ») ; `formation/0005_club` et `suivi/0010_club` y rattachent les données existantes.
+`clubs/0002_default_club` crée le club par défaut « Club » (renommable dans l'admin Django) ; `formation/0005_club` et `suivi/0010_club` y rattachent les données existantes.
 `userManagement/0002_create_initial_admin` creates the first superuser (group `admin`) from `DJANGO_SUPERUSER_USERNAME` / `_PASSWORD` / `_EMAIL` when set and the account does not exist; skipped during `manage.py test` (`settings.TESTING`).
 
 ## Git conventions

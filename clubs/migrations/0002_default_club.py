@@ -1,11 +1,10 @@
-from django.conf import settings
 from django.db import migrations
 
 
 def create_default_club(apps, schema_editor):
     Club = apps.get_model('clubs', 'Club')
     if not Club.objects.exists():
-        Club.objects.create(name=settings.DEFAULT_CLUB_NAME)
+        Club.objects.create(name='Club')
 
 
 class Migration(migrations.Migration):
