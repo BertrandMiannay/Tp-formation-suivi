@@ -19,27 +19,27 @@ from .models import Attendance, Comment, TrainingSession, WorkedSkill
 logger = logging.getLogger(__name__)
 
 
-def _current_season():
-    return Season.objects.filter(current=True).first()
+def _current_season(club):
+    return Season.objects.filter(club=club, current=True).first()
 
 
-def _students(formation_id=None):
-    """Élèves en formation : inscrits (statut « en formation ») à une formation en cours,
+def _students(club, formation_id=None):
+    """Élèves du club en formation : inscrits (statut « en formation ») à une formation en cours,
     ou à la formation demandée."""
-    enrollments = Enrollment.objects.filter(status=Enrollment.Status.ACTIVE)
+    enrollments = Enrollment.objects.filter(formation__club=club, status=Enrollment.Status.ACTIVE)
     if formation_id:
         enrollments = enrollments.filter(formation=formation_id)
     else:
         enrollments = enrollments.filter(formation__status=Formation.Status.ACTIVE)
     return (
-        Member.objects.filter(pk__in=enrollments.values('member_id'))
+        Member.objects.filter(club=club, pk__in=enrollments.values('member_id'))
         .order_by('last_name', 'first_name')
     )
 
 
 def _formation_filter(request):
     """Filtre ?formation= des listes : (formations proposées, id choisi ou None)."""
-    formation_list = Formation.objects.active().order_by('name')
+    formation_list = Formation.objects.active().filter(club=request.club).order_by('name')
     value = request.GET.get('formation', '')
     return formation_list, int(value) if value.isdigit() else None
 
@@ -220,10 +220,10 @@ def _tracking_sheet(member, season, for_student=False):
 
 @club_staff_required
 def session_list(request):
-    seasons = Season.objects.order_by('-current', 'label')
+    seasons = Season.objects.filter(club=request.club).order_by('-current', 'label')
     season_id = request.GET.get('season')
-    season = Season.objects.filter(pk=season_id).first() if season_id else _current_season()
-    sessions = TrainingSession.objects.all()
+    season = seasons.filter(pk=season_id).first() if season_id else _current_season(request.club)
+    sessions = TrainingSession.objects.filter(club=request.club)
     if season:
         sessions = sessions.filter(season=season)
     sessions = sessions.prefetch_related('formations', 'instructors').annotate(
@@ -242,17 +242,18 @@ def session_list(request):
 @club_staff_required
 def session_create(request):
     if request.method == 'POST':
-        form = TrainingSessionForm(request.POST)
+        form = TrainingSessionForm(request.POST, instance=TrainingSession(club=request.club))
         if form.is_valid():
             session = form.save(commit=False)
-            session.season = _current_season()
+            session.season = _current_season(request.club)
             session.save()
             form.save_m2m()
             logger.info("SESSION_CREATE pk=%s date=%s by=%s", session.pk, session.date, request.user.username)
             messages.success(request, f"{session} créée.")
             return redirect('suivi-session-detail', pk=session.pk)
     else:
-        form = TrainingSessionForm(initial={'date': timezone.localdate(), 'instructors': [request.user.pk]})
+        form = TrainingSessionForm(instance=TrainingSession(club=request.club),
+                                   initial={'date': timezone.localdate(), 'instructors': [request.user.pk]})
     return render(request, 'suivi/session_form.html', {
         'form': form,
         'active_tab': 'seances',
@@ -261,7 +262,7 @@ def session_create(request):
 
 @club_staff_required
 def session_detail(request, pk):
-    session = get_object_or_404(TrainingSession, pk=pk)
+    session = get_object_or_404(TrainingSession, pk=pk, club=request.club)
 
     if request.method == 'POST':
         action = request.POST.get('_action')
@@ -297,7 +298,7 @@ def session_detail(request, pk):
             return redirect(reverse('suivi-session-detail', args=[pk]) + '#presences')
 
         elif action == 'add_member':
-            member = get_object_or_404(Member, pk=request.POST.get('member_id'))
+            member = get_object_or_404(Member, pk=request.POST.get('member_id'), club=request.club)
             Attendance.objects.get_or_create(
                 session=session, member=member, defaults={'status': Attendance.Status.PRESENT},
             )
@@ -309,7 +310,7 @@ def session_detail(request, pk):
             formation = session.formations.filter(pk=request.POST.get('formation_id')).first()
             if quick_form.is_valid():
                 with transaction.atomic():
-                    member = quick_form.save(formation=formation)
+                    member = quick_form.save(club=request.club, formation=formation)
                     Attendance.objects.create(session=session, member=member, status=Attendance.Status.PRESENT)
                 logger.info("STUDENT_CREATE pk=%s session=%s by=%s", member.pk, session.pk, request.user.username)
                 messages.success(request, f"Élève {member} créé et noté présent.")
@@ -318,7 +319,7 @@ def session_detail(request, pk):
             return redirect(reverse('suivi-session-detail', args=[pk]) + '#presences')
 
         elif action == 'worked_skills':
-            member = get_object_or_404(Member, pk=request.POST.get('member_id'))
+            member = get_object_or_404(Member, pk=request.POST.get('member_id'), club=request.club)
             valid = set(MemberSkill.SkillStatus.values)
             candidates = _candidate_skills(_session_cursus_ids(session), member)
             existing = {ws.skill_id: ws for ws in WorkedSkill.objects.filter(session=session, member=member)}
@@ -418,7 +419,7 @@ def session_detail(request, pk):
         })
 
     roster_ids = [m.pk for m in roster]
-    addable_members = Member.objects.exclude(pk__in=roster_ids).order_by('last_name', 'first_name')
+    addable_members = Member.objects.filter(club=request.club).exclude(pk__in=roster_ids).order_by('last_name', 'first_name')
 
     return render(request, 'suivi/session_detail.html', {
         'session': session,
@@ -437,7 +438,7 @@ def session_detail(request, pk):
 @club_staff_required
 def session_delete(request, pk):
     if request.method == 'POST':
-        session = get_object_or_404(TrainingSession, pk=pk)
+        session = get_object_or_404(TrainingSession, pk=pk, club=request.club)
         logger.info("SESSION_DELETE pk=%s date=%s by=%s", session.pk, session.date, request.user.username)
         messages.success(request, f"{session} supprimée.")
         session.delete()
@@ -477,23 +478,23 @@ def attendance_overview(request):
     return redirect(reverse('suivi-students') + '?' + urlencode(params))
 
 
-def _attendance_context(season, formation_id):
-    sessions = TrainingSession.objects.filter(season=season).order_by('date', 'pk')
+def _attendance_context(club, season, formation_id):
+    sessions = TrainingSession.objects.filter(club=club, season=season).order_by('date', 'pk')
     if formation_id:
         sessions = list(sessions.filter(formations=formation_id))
-        students = _students(formation_id)
+        students = _students(club, formation_id)
     else:
         sessions = list(sessions)
         # Élèves en formation, plus ceux venus à une séance de la saison sans y être inscrits.
         attended = Attendance.objects.filter(session__in=sessions).values('member_id')
-        students = Member.objects.filter(Q(pk__in=_students()) | Q(pk__in=attended))
+        students = Member.objects.filter(club=club).filter(Q(pk__in=_students(club)) | Q(pk__in=attended))
     students = list(students.order_by('last_name', 'first_name'))
     return {'sessions': sessions, 'rows': attendance_matrix(sessions, students)}
 
 
 @club_staff_required
 def student_list(request):
-    season = _current_season()
+    season = _current_season(request.club)
     formation_list, formation_id = _formation_filter(request)
     show_all = request.GET.get('formation') == 'all'
     context = {
@@ -505,10 +506,11 @@ def student_list(request):
         'active_tab': 'eleves',
     }
     if context['view'] == 'presences':
-        context.update(_attendance_context(season, formation_id))
+        context.update(_attendance_context(request.club, season, formation_id))
         return render(request, 'suivi/student_list.html', context)
 
-    students = Member.objects.order_by('last_name', 'first_name') if show_all else _students(formation_id)
+    students = (Member.objects.filter(club=request.club).order_by('last_name', 'first_name') if show_all
+                else _students(request.club, formation_id))
     students = students.prefetch_related(Prefetch(
         'enrollments', queryset=Enrollment.objects.select_related('formation').filter(status=Enrollment.Status.ACTIVE),
         to_attr='active_enrollments',
@@ -529,7 +531,7 @@ def student_list(request):
 
 @club_staff_required
 def student_detail(request, pk):
-    member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
+    member = get_object_or_404(Member.objects.select_related('user'), pk=pk, club=request.club)
     comment_form = CommentForm(member=member, initial={'date': timezone.localdate()})
     open_form = None
 
@@ -545,16 +547,16 @@ def student_detail(request, pk):
             open_form = 'comment'
 
         elif action == 'enroll':
-            formation = get_object_or_404(Formation, pk=request.POST.get('formation_id'))
+            formation = get_object_or_404(Formation, pk=request.POST.get('formation_id'), club=request.club)
             Enrollment.objects.get_or_create(member=member, formation=formation)
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
 
-    season = _current_season()
+    season = _current_season(request.club)
     sheet = _tracking_sheet(member, season)
     return render(request, 'suivi/student_detail.html', {
         'member': member,
         'enrollments': member.enrollments.select_related('formation__cursus'),
-        'enrollable_formations': Formation.objects.active()
+        'enrollable_formations': Formation.objects.active().filter(club=request.club)
                                  .exclude(enrollments__member=member).order_by('name'),
         **sheet,
         'last_present': next((a.session.date for a in sheet['attendances'] if a.status == Attendance.Status.PRESENT), None),
@@ -576,8 +578,8 @@ def student_detail(request, pk):
 @login_required
 def my_tracking(request):
     """Fiche de suivi de l'élève connecté (fiche rattachée à son compte)."""
-    members = Member.objects.filter(user=request.user)
-    season = _current_season()
+    members = Member.objects.filter(user=request.user, club=request.club)
+    season = _current_season(request.club)
     sheets = []
     for member in members:
         sheets.append({
@@ -600,7 +602,7 @@ def my_tracking(request):
 def comment_action(request, pk):
     """Modification du texte, suppression, ou bascule visible par l'élève ↔ note équipe d'un commentaire
     (tout encadrant). Retour vers `next`."""
-    comment = get_object_or_404(Comment, pk=pk)
+    comment = get_object_or_404(Comment, pk=pk, member__club=request.club)
     next_url = request.GET.get('next', '')
     if not url_has_allowed_host_and_scheme(next_url, {request.get_host()}, request.is_secure()):
         next_url = reverse('suivi-student-detail', args=[comment.member_id]) + '#commentaires'

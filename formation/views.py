@@ -64,7 +64,7 @@ def deletes_student_account(actor, member):
 @club_staff_required
 def student_create(request):
     if request.method == 'POST':
-        form = StudentForm(request.POST)
+        form = StudentForm(request.POST, instance=Member(club=request.club))
         if form.is_valid():
             email = form.cleaned_data['email']
             formation = form.cleaned_data['formation']
@@ -85,13 +85,14 @@ def student_create(request):
             ))
             return redirect('suivi-student-detail', pk=member.pk)
     else:
-        form = StudentForm(initial={'formation': request.GET.get('formation'), 'account': request.GET.get('user')})
+        form = StudentForm(instance=Member(club=request.club),
+                           initial={'formation': request.GET.get('formation'), 'account': request.GET.get('user')})
     return render(request, 'formation/student_form.html', {'form': form, 'member': None})
 
 
 @club_staff_required
 def student_edit(request, pk):
-    member = get_object_or_404(Member, pk=pk)
+    member = get_object_or_404(Member, pk=pk, club=request.club)
     if request.method == 'POST':
         if request.POST.get('_action') == 'renew_invite':
             if member.user_id and can_view_invitation(request.user, member.user):
@@ -122,14 +123,14 @@ def student_edit(request, pk):
 @club_staff_required
 def student_import(request):
     """Création de plusieurs élèves d'un coup (nom, prénom, email facultatif), avec inscription facultative."""
-    form = StudentImportForm(request.POST or None, initial={'formation': request.GET.get('formation')})
+    form = StudentImportForm(request.POST or None, club=request.club, initial={'formation': request.GET.get('formation')})
     if request.method == 'POST' and form.is_valid():
         formation = form.cleaned_data['formation']
         invited = 0
         with transaction.atomic():
             members = []
             for row in form.cleaned_data['lines']:
-                member = Member.objects.create(first_name=row['first_name'], last_name=row['last_name'])
+                member = Member.objects.create(club=request.club, first_name=row['first_name'], last_name=row['last_name'])
                 if row['email'] and not attach_account(member, row['email']).is_active:
                     invited += 1
                 if formation:
@@ -152,7 +153,7 @@ def student_import(request):
 @club_staff_required
 def student_delete(request, pk):
     """Supprime la fiche et tout son suivi (inscriptions, présences, compétences, notes)."""
-    member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
+    member = get_object_or_404(Member.objects.select_related('user'), pk=pk, club=request.club)
     if request.method != 'POST':
         return redirect('eleve-edit', pk=pk)
     user = member.user
@@ -169,7 +170,7 @@ def student_delete(request, pk):
 
 @club_staff_required
 def evaluation(request, pk):
-    member = get_object_or_404(Member, pk=pk)
+    member = get_object_or_404(Member, pk=pk, club=request.club)
     formations_qs = Cursus.objects.filter(pk__in=member.cursus_ids()).prefetch_related('categories__skills').order_by('name')
     skill_ids = [s.pk for f in formations_qs for c in f.categories.all() for s in c.skills.all()]
     member_skills_map = {
@@ -220,7 +221,7 @@ def evaluation(request, pk):
 
 @club_staff_required
 def formation_list(request):
-    formations = Formation.objects.select_related('cursus').prefetch_related('managers').annotate(
+    formations = Formation.objects.filter(club=request.club).select_related('cursus').prefetch_related('managers').annotate(
         student_count=Count('enrollments', filter=Q(enrollments__status=Enrollment.Status.ACTIVE)),
     )
     return render(request, 'formation/formation_list.html', {
@@ -232,7 +233,7 @@ def formation_list(request):
 
 @admin_required
 def formation_create(request):
-    form = FormationForm(request.POST or None)
+    form = FormationForm(request.POST or None, instance=Formation(club=request.club))
     if request.method == 'POST' and form.is_valid():
         formation = form.save()
         logger.info("FORMATION_CREATE pk=%s name=%s by=%s", formation.pk, formation.name, request.user.username)
@@ -243,7 +244,9 @@ def formation_create(request):
 
 @club_staff_required
 def formation_detail(request, pk):
-    formation = get_object_or_404(Formation.objects.select_related('cursus').prefetch_related('managers'), pk=pk)
+    formation = get_object_or_404(
+        Formation.objects.select_related('cursus').prefetch_related('managers'), pk=pk, club=request.club,
+    )
     edit_form = FormationForm(instance=formation) if request.user.is_administrator else None
     quick_form = QuickStudentForm()
     anchor = reverse('formation-detail', args=[pk]) + '#eleves'
@@ -252,7 +255,7 @@ def formation_detail(request, pk):
         action = request.POST.get('_action')
 
         if action == 'enroll':
-            member = get_object_or_404(Member, pk=request.POST.get('member_id'))
+            member = get_object_or_404(Member, pk=request.POST.get('member_id'), club=request.club)
             _, created = Enrollment.objects.get_or_create(member=member, formation=formation)
             if created:
                 messages.success(request, f"{member} inscrit à la formation.")
@@ -261,7 +264,7 @@ def formation_detail(request, pk):
         elif action == 'create_student':
             quick_form = QuickStudentForm(request.POST)
             if quick_form.is_valid():
-                member = quick_form.save(formation=formation)
+                member = quick_form.save(club=request.club, formation=formation)
                 logger.info("STUDENT_CREATE pk=%s formation=%s by=%s", member.pk, formation.pk, request.user.username)
                 messages.success(request, f"Élève {member} créé et inscrit.")
                 return redirect(anchor)
@@ -307,7 +310,7 @@ def formation_detail(request, pk):
         'acquired': acquired.get(e.member_id, 0),
         'pct': round(100 * acquired.get(e.member_id, 0) / skill_total) if skill_total else 0,
     } for e in enrollments]
-    addable_members = Member.objects.exclude(enrollments__formation=formation).order_by('last_name', 'first_name')
+    addable_members = Member.objects.filter(club=request.club).exclude(enrollments__formation=formation).order_by('last_name', 'first_name')
     sessions = list(formation.training_sessions.order_by('date', 'pk'))
     return render(request, 'formation/formation_detail.html', {
         'formation': formation,
@@ -333,10 +336,10 @@ def season_gestion(request):
     if request.method == 'POST':
         label = request.POST.get('label', '').strip()
         if label:
-            Season.objects.create(label=label)
+            Season.objects.create(club=request.club, label=label)
             return redirect('saison-gestion')
         form_data = {'label': label}
-    seasons = Season.objects.all().order_by('-current', 'label')
+    seasons = Season.objects.filter(club=request.club).order_by('-current', 'label')
     return render(request, 'formation/season_gestion.html', {
         'seasons': seasons,
         'form_data': form_data,
@@ -347,13 +350,13 @@ def season_gestion(request):
 @admin_required
 def set_current_season(request, pk):
     if request.method == 'POST':
-        season = get_object_or_404(Season, pk=pk)
+        season = get_object_or_404(Season, pk=pk, club=request.club)
         with transaction.atomic():
-            Season.objects.update(current=False)
+            Season.objects.filter(club=request.club).update(current=False)
             Season.objects.filter(pk=season.pk).update(current=True)
             # Séances créées sans saison en cours : rattachées à la saison activée,
             # sinon elles disparaîtraient de la liste filtrée sur la saison en cours.
-            attached = TrainingSession.objects.filter(season__isnull=True).update(season=season)
+            attached = TrainingSession.objects.filter(club=request.club, season__isnull=True).update(season=season)
         if attached:
             logger.info("SEASON_ATTACH_SESSIONS season=%s count=%s by=%s", season.pk, attached, request.user.username)
             messages.info(request, f"{attached} séance(s) sans saison rattachée(s) à {season}.")
@@ -363,7 +366,7 @@ def set_current_season(request, pk):
 @admin_required
 def delete_season(request, pk):
     if request.method == 'POST':
-        season = Season.objects.filter(pk=pk).first()
+        season = Season.objects.filter(pk=pk, club=request.club).first()
         if season:
             logger.info("SEASON_DELETE pk=%s label=%s by=%s", pk, season.label, request.user.username)
             season.delete()
@@ -372,7 +375,7 @@ def delete_season(request, pk):
 
 @admin_required
 def cursus_list(request):
-    cursus_list = Cursus.objects.annotate(
+    cursus_list = Cursus.objects.filter(club=request.club).annotate(
         category_count=Count('categories'),
     ).order_by('status', '-date')
     in_use = Cursus.in_use_ids()
@@ -399,7 +402,7 @@ def cursus_create(request):
         elif (parsed_date := _parse_iso_date(date_str)) is None:
             error = "Format de date invalide (attendu : AAAA-MM-JJ)."
         else:
-            cursus = Cursus.objects.create(name=name, date=parsed_date)
+            cursus = Cursus.objects.create(club=request.club, name=name, date=parsed_date)
             logger.info("CURSUS_CREATE pk=%s name=%s by=%s", cursus.pk, cursus.name, request.user.username)
             messages.success(request, f"Cursus « {cursus.name} » créé.")
             return redirect('saison-cursus-detail', pk=cursus.pk)
@@ -412,7 +415,7 @@ def cursus_create(request):
 
 @admin_required
 def cursus_detail(request, pk):
-    cursus = get_object_or_404(Cursus, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=pk, club=request.club)
 
     if request.method == 'POST':
         action = request.POST.get('_action')
@@ -468,7 +471,7 @@ def cursus_detail(request, pk):
             order_list = request.POST.getlist('skill_order')
             with transaction.atomic():
                 for i, skill_pk in enumerate(order_list, start=1):
-                    Skill.objects.filter(pk=skill_pk, category_id=cat_pk).update(order=i)
+                    Skill.objects.filter(pk=skill_pk, category_id=cat_pk, category__cursus=cursus).update(order=i)
             return redirect('saison-cursus-detail', pk=pk)
 
     categories = cursus.categories.prefetch_related('skills').all()
@@ -497,7 +500,7 @@ def _cursus_json(cursus, categories=None):
 @admin_required
 def cursus_export_json(request, pk):
     """Téléchargement du cursus en fichier .json, réimportable tel quel."""
-    cursus = get_object_or_404(Cursus, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=pk, club=request.club)
     filename = f"cursus-{slugify(cursus.name) or cursus.pk}-{cursus.date.isoformat()}.json"
     response = HttpResponse(_cursus_json(cursus), content_type='application/json; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -507,7 +510,7 @@ def cursus_export_json(request, pk):
 @admin_required
 def cursus_archive(request, pk):
     if request.method == 'POST':
-        cursus = get_object_or_404(Cursus, pk=pk)
+        cursus = get_object_or_404(Cursus, pk=pk, club=request.club)
         if cursus.status == Cursus.Status.ACTIVE:
             cursus.status = Cursus.Status.ARCHIVED
             action_label = "archivé"
@@ -525,7 +528,7 @@ def cursus_delete(request, pk):
     """Suppression définitive d'un cursus (catégories, compétences et formations sans inscrit),
     refusée dès qu'un élève y est inscrit ou y a un suivi."""
     if request.method == 'POST':
-        cursus = get_object_or_404(Cursus, pk=pk)
+        cursus = get_object_or_404(Cursus, pk=pk, club=request.club)
         if not cursus.is_deletable():
             messages.error(request, f"Le cursus « {cursus.name} » ne peut pas être supprimé : des élèves y sont inscrits "
                                     "ou y ont déjà un suivi. Archivez-le plutôt.")
@@ -564,7 +567,7 @@ def cursus_import_json(request):
                 error = "Format de date invalide (attendu : AAAA-MM-JJ)."
             else:
                 with transaction.atomic():
-                    cursus = Cursus.objects.create(name=name, date=parsed_date)
+                    cursus = Cursus.objects.create(club=request.club, name=name, date=parsed_date)
                     for cat_order, cat_data in enumerate(categories_raw, start=1):
                         cat_name = str(cat_data.get('name', '')).strip() if isinstance(cat_data, dict) else ''
                         if not cat_name:
@@ -593,8 +596,8 @@ def cursus_import_json(request):
 def evaluation_save(request, pk, cursus_pk):
     if request.method != 'POST':
         return redirect('eleve-evaluation', pk=pk)
-    member = get_object_or_404(Member, pk=pk)
-    cursus = get_object_or_404(Cursus, pk=cursus_pk)
+    member = get_object_or_404(Member, pk=pk, club=request.club)
+    cursus = get_object_or_404(Cursus, pk=cursus_pk, club=request.club)
     valid_statuses = set(dict(MemberSkill.SkillStatus.choices))
     skills = Skill.objects.filter(category__cursus=cursus)
     today = timezone.localdate()
@@ -753,8 +756,8 @@ def _build_evaluation_pdf(cursus, member=None, subtitle=None):
 
 @club_staff_required
 def evaluation_export(request, pk, cursus_pk):
-    member = get_object_or_404(Member, pk=pk)
-    cursus = get_object_or_404(Cursus, pk=cursus_pk)
+    member = get_object_or_404(Member, pk=pk, club=request.club)
+    cursus = get_object_or_404(Cursus, pk=cursus_pk, club=request.club)
     buf = _build_evaluation_pdf(cursus, member=member)
     return _pdf_response(buf, f"evaluation_{member.last_name}_{member.first_name}_{cursus.name}.pdf")
 
@@ -762,7 +765,7 @@ def evaluation_export(request, pk, cursus_pk):
 @club_staff_required
 def cursus_blank_export(request, pk):
     """Fiche d'évaluation vierge d'un cursus (PDF à imprimer)."""
-    cursus = get_object_or_404(Cursus, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=pk, club=request.club)
     buf = _build_evaluation_pdf(cursus)
     return _pdf_response(buf, f"fiche_vierge_{cursus.name}.pdf")
 
@@ -770,7 +773,7 @@ def cursus_blank_export(request, pk):
 @club_staff_required
 def formation_blank_export(request, pk):
     """Fiche d'évaluation vierge du cursus d'une formation, avec le nom et les dates de la formation."""
-    formation = get_object_or_404(Formation.objects.select_related('cursus'), pk=pk)
+    formation = get_object_or_404(Formation.objects.select_related('cursus'), pk=pk, club=request.club)
     subtitle = f"Formation : {formation.name}"
     if formation.start_date:
         subtitle += f" · du {date_format(formation.start_date, 'd/m/Y')}"
@@ -784,5 +787,5 @@ def formation_blank_export(request, pk):
 def evaluation_delete(request, pk, ev_pk):
     if request.method != 'POST':
         return redirect('eleve-evaluation', pk=pk)
-    get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk).delete()
+    get_object_or_404(SkillEvaluation, pk=ev_pk, member__pk=pk, member__club=request.club).delete()
     return redirect('eleve-evaluation', pk=pk)

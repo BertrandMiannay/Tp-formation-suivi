@@ -72,7 +72,7 @@ class StudentForm(forms.ModelForm):
             del self.fields['formation']  # inscriptions gérées depuis la fiche
             del self.fields['account']
         else:
-            self.fields['formation'].queryset = Formation.objects.active()
+            self.fields['formation'].queryset = Formation.objects.active().filter(club=self.instance.club)
             self.fields['account'].queryset = attachable_accounts().order_by('first_name', 'last_name', 'email')
             self.selected_account = self._selected_account()
             if self.selected_account:
@@ -138,9 +138,9 @@ class StudentImportForm(forms.Form):
         empty_label='— Sans inscription —',
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, club, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['formation'].queryset = Formation.objects.active()
+        self.fields['formation'].queryset = Formation.objects.active().filter(club=club)
 
     def clean_lines(self):
         """Liste de dicts {first_name, last_name, email} ; toutes les erreurs sont signalées d'un coup."""
@@ -205,7 +205,7 @@ class FormationForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['cursus'].queryset = Cursus.objects.filter(
+        self.fields['cursus'].queryset = Cursus.objects.filter(club=self.instance.club).filter(
             Q(status=Cursus.Status.ACTIVE) | Q(pk=self.instance.cursus_id)
         ).order_by('name')
 
@@ -222,10 +222,10 @@ class QuickStudentForm(forms.Form):
     first_name = forms.CharField(label='Prénom', max_length=150)
     last_name  = forms.CharField(label='Nom', max_length=150)
 
-    def save(self, formation=None):
-        """Crée l'élève et l'inscrit à `formation` si elle est fournie."""
+    def save(self, club, formation=None):
+        """Crée l'élève dans `club` et l'inscrit à `formation` si elle est fournie."""
         with transaction.atomic():
-            member = Member.objects.create(**self.cleaned_data)
+            member = Member.objects.create(club=club, **self.cleaned_data)
             if formation:
                 Enrollment.objects.create(member=member, formation=formation)
         return member
