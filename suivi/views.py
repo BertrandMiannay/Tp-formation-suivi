@@ -12,7 +12,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation
 from formation.forms import QuickStudentForm
-from userManagement.views import can_reset_password, club_staff_required, invite_url_for
+from userManagement.views import can_reset_password, can_view_invitation, club_staff_required, invite_url_for
 from .forms import CommentForm, TrainingSessionForm, add_comments
 from .models import Attendance, Comment, TrainingSession, WorkedSkill
 
@@ -561,7 +561,8 @@ def student_detail(request, pk):
         'comments': member.comments.select_related('session', 'skill', 'author'),
         'comment_form': comment_form,
         'open_form': open_form,
-        'invite_url': invite_url_for(request, member.user) if member.user_id and not member.user.is_active else None,
+        'invite_url': (invite_url_for(request, member.user)
+                       if member.user_id and can_view_invitation(request.user, member.user) else None),
         'can_reset_password': member.user_id is not None and can_reset_password(request.user, member.user),
         'season': season,
         'active_tab': 'eleves',

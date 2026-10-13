@@ -12,6 +12,20 @@ from userManagement.models import Role
 from .models import Cursus, Enrollment, Formation, Member
 
 
+def attachable_accounts():
+    """Comptes sans fiche auxquels une fiche élève peut être rattachée : comptes actifs et invitations élève
+    en attente. Une invitation encadrant / admin en attente est exclue : sa fiche montrerait le lien
+    d'invitation aux encadrants, qui pourraient l'accepter à la place du destinataire."""
+    return get_user_model().objects.filter(student_profile__isnull=True).filter(
+        Q(is_active=True) | Q(groups__name=Role.STUDENT)
+    ).distinct()
+
+
+def pending_staff_invitations():
+    """Comptes encadrant / admin invités qui n'ont pas encore accepté leur invitation."""
+    return get_user_model().objects.filter(is_active=False).exclude(groups__name=Role.STUDENT)
+
+
 class AccountChoiceField(forms.ModelChoiceField):
     """Comptes sans fiche élève (encadrant qui suit une formation, élève invité depuis la page Utilisateurs…)."""
 
@@ -59,10 +73,7 @@ class StudentForm(forms.ModelForm):
             del self.fields['account']
         else:
             self.fields['formation'].queryset = Formation.objects.active()
-            self.fields['account'].queryset = (
-                get_user_model().objects.filter(student_profile__isnull=True)
-                .order_by('first_name', 'last_name', 'email')
-            )
+            self.fields['account'].queryset = attachable_accounts().order_by('first_name', 'last_name', 'email')
             self.selected_account = self._selected_account()
             if self.selected_account:
                 # L'email est celui du compte ; prénom et nom en sont repris s'ils sont renseignés.
@@ -105,6 +116,8 @@ class StudentForm(forms.ModelForm):
         owner = others.filter(student_profile__isnull=False).first()
         if owner:
             raise forms.ValidationError("Cette adresse est déjà utilisée par un autre élève.")
+        if pending_staff_invitations().filter(email__iexact=email).exists():
+            raise forms.ValidationError("Une invitation encadrant ou administrateur est en attente pour cette adresse.")
         if self.instance.user_id and others.exists():
             raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
         return email
@@ -142,6 +155,7 @@ class StudentImportForm(forms.Form):
             e.lower() for e in get_user_model().objects.filter(student_profile__isnull=False)
             .values_list('email', flat=True) if e
         }
+        emails_pending_staff = {e.lower() for e in pending_staff_invitations().values_list('email', flat=True) if e}
         for n, line in raw_lines:
             cells = [c.strip() for c in re.split(r'[;\t,]', line)]
             while cells and not cells[-1]:
@@ -162,6 +176,9 @@ class StudentImportForm(forms.Form):
                     continue
                 if email in emails_in_use:
                     errors.append(f"Ligne {n} : {email} est déjà utilisée par un autre élève.")
+                    continue
+                if email in emails_pending_staff:
+                    errors.append(f"Ligne {n} : une invitation encadrant ou administrateur est en attente pour {email}.")
                     continue
                 if email in seen_emails:
                     errors.append(f"Ligne {n} : {email} apparaît plusieurs fois.")
