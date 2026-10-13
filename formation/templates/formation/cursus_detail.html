@@ -77,7 +77,7 @@
         {% csrf_token %}
         <input type="hidden" name="_action" value="add_skill">
         <input type="hidden" name="category_pk" value="{{ category.pk }}">
-        <input type="text" name="skill_name" placeholder="Nouvelle compétence…"
+        <input type="text" name="skill_name" id="skill-name-{{ category.pk }}" data-keep-focus placeholder="Nouvelle compétence…"
                style="flex:1; padding:0.35rem 0.6rem; border:1px solid #ccc; border-radius:4px; font-size:0.875rem;">
         <button type="submit" class="btn btn-secondary" style="font-size:0.85rem; white-space:nowrap;">
           + Ajouter
@@ -92,7 +92,7 @@
   <form method="post" class="add-category-form" style="display:flex; gap:0.5rem; margin-top:1rem;">
     {% csrf_token %}
     <input type="hidden" name="_action" value="add_category">
-    <input type="text" name="category_name" placeholder="Nouvelle catégorie…"
+    <input type="text" name="category_name" id="category-name" data-keep-focus placeholder="Nouvelle catégorie…"
            style="flex:1; max-width:350px; padding:0.4rem 0.6rem; border:1px solid #ccc; border-radius:4px;">
     <button type="submit" class="btn btn-primary">+ Ajouter une catégorie</button>
   </form>
@@ -146,6 +146,30 @@ document.getElementById('copy-json-btn').addEventListener('click', function () {
 
 <script>
 (function () {
+  // Conserve la position de la page (et le champ de saisie) après un envoi de formulaire :
+  // le serveur redirige vers la même page, qui sinon se rouvrirait tout en haut.
+  const scrollKey = 'cursus-detail-scroll-{{ cursus.pk }}';
+
+  function rememberScroll(form) {
+    const field = form.querySelector('input[data-keep-focus]');
+    try {
+      sessionStorage.setItem(scrollKey, JSON.stringify({ y: window.scrollY, focus: field ? field.id : '' }));
+    } catch (e) {}
+  }
+
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(scrollKey) || 'null');
+    sessionStorage.removeItem(scrollKey);
+    if (saved) {
+      window.scrollTo(0, saved.y);
+      const field = saved.focus && document.getElementById(saved.focus);
+      if (field) field.focus({ preventScroll: true });
+    }
+  } catch (e) {}
+
+  // Les formulaires de réordonnancement sont envoyés par form.submit(), qui ne déclenche pas cet événement.
+  document.addEventListener('submit', function (e) { rememberScroll(e.target); });
+
   // Drag-and-drop générique
   function makeDraggable(container, itemSelector, onReorder) {
     let dragged = null;
@@ -185,7 +209,9 @@ document.getElementById('copy-json-btn').addEventListener('click', function () {
       inp.value = el.dataset.pk;
       inputs.appendChild(inp);
     });
-    document.getElementById('reorder-cat-form').submit();
+    const form = document.getElementById('reorder-cat-form');
+    rememberScroll(form);
+    form.submit();
   });
 
   // Réordonnancement des compétences par catégorie
@@ -201,7 +227,9 @@ document.getElementById('copy-json-btn').addEventListener('click', function () {
         inp.value = el.dataset.pk;
         inputs.appendChild(inp);
       });
-      document.getElementById('reorder-skills-form-' + catPk).submit();
+      const form = document.getElementById('reorder-skills-form-' + catPk);
+      rememberScroll(form);
+      form.submit();
     });
   });
 })();
