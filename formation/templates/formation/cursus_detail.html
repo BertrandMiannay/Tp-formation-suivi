@@ -170,19 +170,30 @@ document.getElementById('copy-json-btn').addEventListener('click', function () {
   // Les formulaires de réordonnancement sont envoyés par form.submit(), qui ne déclenche pas cet événement.
   document.addEventListener('submit', function (e) { rememberScroll(e.target); });
 
-  // Drag-and-drop générique
+  // Drag-and-drop générique. Les compétences sont imbriquées dans des catégories elles aussi déplaçables :
+  // chaque liste ne traite que son propre glisser et stoppe la propagation, sinon la liste des catégories
+  // prendrait la catégorie parente pour l'élément déplacé et son envoi remplacerait celui des compétences.
   function makeDraggable(container, itemSelector, onReorder) {
     let dragged = null;
+    let initialOrder = '';
+
+    function currentOrder() {
+      return Array.from(container.querySelectorAll(itemSelector)).map(function (el) { return el.dataset.pk; }).join(',');
+    }
 
     container.addEventListener('dragstart', function (e) {
       const item = e.target.closest(itemSelector);
       if (!item || !container.contains(item)) return;
+      e.stopPropagation();
       dragged = item;
+      initialOrder = currentOrder();
       setTimeout(function () { dragged.classList.add('dragging'); }, 0);
     });
 
     container.addEventListener('dragover', function (e) {
+      if (!dragged) return;
       e.preventDefault();
+      e.stopPropagation();
       const target = e.target.closest(itemSelector);
       if (!target || target === dragged || !container.contains(target)) return;
       const rect = target.getBoundingClientRect();
@@ -190,10 +201,12 @@ document.getElementById('copy-json-btn').addEventListener('click', function () {
       container.insertBefore(dragged, after ? target.nextSibling : target);
     });
 
-    container.addEventListener('dragend', function () {
-      if (dragged) dragged.classList.remove('dragging');
+    container.addEventListener('dragend', function (e) {
+      if (!dragged) return;
+      e.stopPropagation();
+      dragged.classList.remove('dragging');
       dragged = null;
-      onReorder();
+      if (currentOrder() !== initialOrder) onReorder();
     });
   }
 
