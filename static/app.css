@@ -115,6 +115,10 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .staff-toggle { background:none; border:1px solid #c7d2fe; border-radius:4px; padding:0.15rem 0.4rem; cursor:pointer; font-size:0.8rem; line-height:1.4; }
 .private-mark { font-size:0.75rem; }
 .staff-note { color:#3730a3; font-size:0.8rem; }
+.sp-comments { margin-top:0.25rem; font-size:0.8rem; }
+.sp-comments summary { cursor:pointer; color:#4b5563; }
+.sp-comments ul { list-style:none; margin:0.35rem 0 0; padding:0 0 0 0.75rem; border-left:2px solid #e5e7eb; }
+.sp-comments li { margin-bottom:0.35rem; }
 .badge-cursus { background:#e0e7ff; color:#3730a3; }
 .badge-enroll-active { background:#dbeafe; color:#1e40af; }
 .badge-enroll-completed { background:#dcfce7; color:#166534; }

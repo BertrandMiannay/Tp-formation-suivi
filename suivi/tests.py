@@ -321,6 +321,37 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(resp, 'Palmage à travailler')
         self.assertNotContains(resp, 'Peu motivé')
 
+    def test_skill_session_comments_history(self):
+        """Chaque compétence liste les commentaires de toutes les séances où elle a été travaillée ;
+        l'élève ne voit ni les notes équipe ni les séances commentées uniquement par l'équipe."""
+        first = self._create_session()
+        second = TrainingSession.objects.create(date=date(2026, 10, 14), season=first.season)
+        second.formations.add(self.formation)
+        a, b = f'ws_{self.skill_a.pk}', f'ws_{self.skill_b.pk}'
+        self.client.post(reverse('suivi-session-detail', args=[first.pk]), {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            a: 'on', f'{a}_comment': 'Premier essai', f'{a}_staff_comment': 'Appréhension',
+        })
+        self.client.post(reverse('suivi-session-detail', args=[second.pk]), {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            a: 'on', f'{a}_comment': 'Beaucoup mieux',
+            b: 'on', f'{b}_staff_comment': 'Équipe seulement',
+        })
+
+        resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, '2 commentaires de séance')
+        self.assertContains(resp, '1 commentaire de séance')
+        self.assertContains(resp, 'Appréhension')
+
+        self.client.force_login(self.student_user)
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, '2 commentaires de séance')
+        self.assertNotContains(resp, '1 commentaire de séance')
+        self.assertContains(resp, 'Premier essai')
+        self.assertContains(resp, 'Beaucoup mieux')
+        self.assertNotContains(resp, 'Appréhension')
+        self.assertNotContains(resp, 'Équipe seulement')
+
     def test_my_tracking_without_profile(self):
         self.client.force_login(self.instructor)
         resp = self.client.get(reverse('suivi-mine'))
