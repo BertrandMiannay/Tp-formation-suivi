@@ -42,4 +42,5 @@ urlpatterns = [
     path('eleves/', include(student_urlpatterns)),
     path('suivi/', include('suivi.urls')),
     path('users/', include('userManagement.urls')),
+    path('clubs/', include('clubs.urls')),
 ]

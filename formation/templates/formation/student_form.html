@@ -44,7 +44,7 @@
       onsubmit="return confirm('Supprimer définitivement la fiche de {{ member|escapejs }} ? Inscriptions, présences, compétences et notes seront perdus.');">
     {% csrf_token %}
     <h2>Supprimer la fiche</h2>
-    <p class="muted" style="font-size:0.9rem;">Supprime définitivement l'élève et tout son suivi (inscriptions, présences, compétences, notes){% if member.user_id %}{% if delete_account %}, ainsi que son compte élève{% else %} ; le compte rattaché ({{ member.user.role_label|lower }}) est conservé{% endif %}{% endif %}.</p>
+    <p class="muted" style="font-size:0.9rem;">Supprime définitivement l'élève et tout son suivi (inscriptions, présences, compétences, notes){% if member.user_id %}{% if delete_account %}, ainsi que son compte élève{% else %} ; le compte rattaché ({{ kept_account_label }}) est conservé{% endif %}{% endif %}.</p>
     <div class="form-actions"><button type="submit" class="btn btn-danger">Supprimer l'élève</button></div>
 </form>
 {% endif %}

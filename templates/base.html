@@ -33,6 +33,23 @@
                 <a href="/users/">Utilisateurs</a>
             {% endif %}
             <span class="spacer"></span>
+            {% if user_clubs|length > 1 %}
+                <details class="club-switcher">
+                    <summary>{{ request.club|default:"Choisir un club" }}</summary>
+                    <div class="club-switcher-menu">
+                        {% for club in user_clubs %}
+                        <form method="post" action="{% url 'club-choose' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="club_id" value="{{ club.pk }}">
+                            <input type="hidden" name="next" value="/">
+                            <button type="submit"{% if club == request.club %} class="active" aria-current="true"{% endif %}>{{ club.name }}</button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                </details>
+            {% elif request.club %}
+                <span class="club-name">{{ request.club }}</span>
+            {% endif %}
             <a href="{% url 'userManagement:change_password' %}">{{ user.username }}{% if user.role %} · {{ user.role_label }}{% endif %}</a>
             <a href="/accounts/logout/">Déconnexion</a>
         </div>

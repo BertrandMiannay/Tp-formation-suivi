@@ -7,11 +7,11 @@ from functools import wraps
 from django.conf import settings
 from django.contrib.auth import get_user_model, login, password_validation, update_session_auth_hash
 from django.contrib import messages
+from django.db import transaction
 from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.contrib.auth.models import Group
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -21,7 +21,8 @@ from django.views.generic import ListView, FormView, View, TemplateView
 from django.urls import reverse, reverse_lazy
 from django import forms
 
-from .models import Role
+from clubs.models import Membership
+from .models import STAFF_ROLES, Role
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,9 @@ club_staff_required = _make_permission_decorator(lambda user: user.is_club_staff
 User = get_user_model()
 
 
-def create_invited_user(email, group_name=None):
-    """Crée un compte inactif avec un lien d'invitation (le mot de passe est choisi à l'acceptation)."""
+def create_invited_user(email, club=None, role=None):
+    """Crée un compte inactif avec un lien d'invitation (le mot de passe est choisi à l'acceptation),
+    membre de `club` avec le rôle `role` s'ils sont fournis."""
     token = uuid.uuid4()
     user = User.objects.create(
         username=str(token),
@@ -57,8 +59,8 @@ def create_invited_user(email, group_name=None):
         invite_token=token,
         invite_expires_at=timezone.now() + timedelta(days=INVITE_EXPIRY_DAYS),
     )
-    if group_name:
-        user.groups.add(Group.objects.get(name=group_name))
+    if club is not None and role:
+        Membership.objects.create(user=user, club=club, role=role)
     return user
 
 
@@ -80,18 +82,32 @@ def can_manage_account(actor, target):
     return target != actor and (actor.is_superuser or not target.is_superuser)
 
 
-def can_reset_password(actor, target):
-    """Un admin peut réinitialiser tout compte actif (superutilisateur excepté) ; un encadrant,
-    seulement celui d'un élève."""
+def can_reset_password(actor, target, club):
+    """Réinitialisation du mot de passe d'un compte actif : un super-admin, pour tout compte (superutilisateur
+    excepté) ; dans un club, seulement les comptes membres de ce club uniquement (un compte partagé avec un
+    autre club passe par un super-admin) : un admin du club pour tous, un encadrant pour les élèves."""
     if not target.is_active or not can_manage_account(actor, target):
         return False
-    return actor.is_administrator or (actor.is_club_staff and target.role == Role.STUDENT)
+    if actor.is_superuser:
+        return True
+    if not target.only_in_club(club):
+        return False
+    return actor.role_in(club) == Role.ADMIN or (
+        actor.role_in(club) in STAFF_ROLES and target.role_in(club) == Role.STUDENT
+    )
 
 
-def can_view_invitation(actor, target):
-    """Lien d'invitation d'un compte en attente : un admin voit tous les liens ; un encadrant, seulement ceux
-    des comptes élèves (accepter l'invitation d'un compte encadrant / admin donnerait ses droits)."""
-    return not target.is_active and (actor.is_administrator or target.role == Role.STUDENT)
+def can_view_invitation(actor, target, club):
+    """Lien d'invitation d'un compte en attente, membre de ce club uniquement : un admin du club voit tous les
+    liens ; un encadrant, seulement ceux des comptes élèves (accepter l'invitation d'un compte encadrant / admin
+    donnerait ses droits). Un super-admin voit tous les liens."""
+    if target.is_active:
+        return False
+    if actor.is_superuser:
+        return True
+    if not target.only_in_club(club):
+        return False
+    return actor.role_in(club) == Role.ADMIN or target.role_in(club) == Role.STUDENT
 
 
 def password_reset_url_for(request, user):
@@ -104,6 +120,14 @@ def password_reset_url_for(request, user):
 
 class HomeView(LoginRequiredMixin, TemplateView):
     template_name = 'home.html'
+
+    def get(self, request, *args, **kwargs):
+        # Plusieurs clubs et aucun encore choisi : écran de choix.
+        user = request.user
+        if (request.club is not None and not request.session.get('club_id') and user.last_club_id is None
+                and user.clubs().count() > 1):
+            return redirect('club-choose')
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -131,7 +155,7 @@ class HomeView(LoginRequiredMixin, TemplateView):
                 'title': 'Mon suivi',
                 'description': 'Mes présences, compétences et remarques des encadrants.',
                 'url': '/suivi/mon-suivi/',
-                'visible': hasattr(user, 'student_profile'),
+                'visible': user.student_profile is not None,
             },
             {
                 'title': 'Saisons et cursus',
@@ -216,13 +240,21 @@ class UserListView(AdminRequiredMixin, ListView):
     context_object_name = 'users'
 
     def get_queryset(self):
-        return User.objects.prefetch_related('groups').order_by('username')
+        return User.objects.filter(memberships__club=self.request.club).order_by('username')
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['users_with_urls'] = [
-            (u, invite_url_for(self.request, u), can_manage_account(self.request.user, u)) for u in ctx['users']
-        ]
+        actor, club = self.request.user, self.request.club
+        ctx['rows'] = [{
+            'user': u,
+            'role_label': Role(u.role_in(club)).label,
+            'invite_url': invite_url_for(self.request, u) if can_view_invitation(actor, u, club) else None,
+            'pending': not u.is_active,
+            'manageable': can_manage_account(actor, u),
+            'can_reset_password': can_reset_password(actor, u, club),
+            # Retirer du club supprime le compte s'il ne sert nulle part ailleurs.
+            'deletes_account': u.only_in_club(club),
+        } for u in ctx['users']]
         ctx['app_version'] = settings.APP_VERSION
         return ctx
 
@@ -233,13 +265,13 @@ class UserRoleUpdateView(AdminRequiredMixin, FormView):
     success_url = reverse_lazy('userManagement:user_list')
 
     def get_target_user(self):
-        user = get_object_or_404(User, pk=self.kwargs['pk'])
+        user = get_object_or_404(User, pk=self.kwargs['pk'], memberships__club=self.request.club)
         if not can_manage_account(self.request.user, user):
             raise Http404
         return user
 
     def get_initial(self):
-        return {'role': self.get_target_user().role}
+        return {'role': self.get_target_user().role_in(self.request.club)}
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -247,13 +279,12 @@ class UserRoleUpdateView(AdminRequiredMixin, FormView):
         return ctx
 
     def form_valid(self, form):
-        user = self.get_target_user()
-        old_groups = list(user.groups.values_list('name', flat=True))
+        user, club = self.get_target_user(), self.request.club
+        old_role = user.role_in(club)
         new_role = form.cleaned_data['role']
-        group = Group.objects.get(name=new_role)
-        user.groups.set([group])
-        logger.info("ROLE_CHANGE user=%s old=%s new=%s by=%s",
-                    user.username, old_groups, new_role, self.request.user.username)
+        Membership.objects.filter(user=user, club=club).update(role=new_role)
+        logger.info("ROLE_CHANGE user=%s club=%s old=%s new=%s by=%s",
+                    user.username, club.pk, old_role, new_role, self.request.user.username)
         return super().form_valid(form)
 
 
@@ -263,15 +294,26 @@ class InviteView(AdminRequiredMixin, FormView):
 
     def form_valid(self, form):
         email = form.cleaned_data['email'].strip().lower()
+        club, role = self.request.club, form.cleaned_data['role']
 
-        if User.objects.filter(email__iexact=email).exists():
-            form.add_error('email', 'Un utilisateur avec cet email existe déjà.')
-            return self.form_invalid(form)
+        existing = User.objects.filter(email__iexact=email).first()
+        if existing is not None:
+            if Membership.objects.filter(user=existing, club=club).exists():
+                form.add_error('email', 'Ce compte est déjà membre du club.')
+                return self.form_invalid(form)
+            # Compte d'un autre club : ajouté à ce club, sans rien révéler de ses autres clubs ni lien d'invitation.
+            Membership.objects.create(user=existing, club=club, role=role)
+            logger.info("MEMBERSHIP_ADD user=%s club=%s role=%s by=%s",
+                        existing.username, club.pk, role, self.request.user.username)
+            messages.success(self.request, f"Un compte existe déjà pour {email} : il est ajouté au club "
+                                           f"({Role(role).label.lower()}). La personne retrouvera ce club à sa "
+                                           "prochaine connexion, avec ses identifiants habituels.")
+            return redirect('userManagement:user_list')
 
-        user = create_invited_user(email, group_name=form.cleaned_data['role'])
+        user = create_invited_user(email, club=club, role=role)
         invite_url = invite_url_for(self.request, user)
-        logger.info("INVITE_SENT to=%s by=%s expires_in=%dd",
-                    email, self.request.user.username, INVITE_EXPIRY_DAYS)
+        logger.info("INVITE_SENT to=%s club=%s by=%s expires_in=%dd",
+                    email, club.pk, self.request.user.username, INVITE_EXPIRY_DAYS)
         return self.render_to_response(self.get_context_data(
             form=InvitationForm(),
             invitation_url=invite_url,
@@ -315,10 +357,10 @@ class PasswordResetLinkView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         target = get_object_or_404(User, pk=pk)
-        if not can_reset_password(request.user, target):
+        if not can_reset_password(request.user, target, request.club):
             return redirect('home')
         logger.info("PASSWORD_RESET_LINK user=%s by=%s", target.username, request.user.username)
-        member = getattr(target, 'student_profile', None)
+        member = target.student_profiles.filter(club=request.club).first()
         back_url = (reverse('suivi-student-detail', args=[member.pk]) + '#infos'
                     if member and not request.user.is_administrator else reverse('userManagement:user_list'))
         next_url = request.POST.get('next')
@@ -361,12 +403,21 @@ class PasswordResetView(View):
 
 
 class UserDeleteView(AdminRequiredMixin, View):
+    """Retire le compte du club ; un compte qui n'appartient à aucun autre club est supprimé."""
+
     def post(self, request, pk):
-        user = get_object_or_404(User, pk=pk)
+        club = request.club
+        user = get_object_or_404(User, pk=pk, memberships__club=club)
         if can_manage_account(request.user, user):
-            logger.info("USER_DELETE user=%s email=%s by=%s",
-                        user.username, user.email, request.user.username)
-            user.delete()
+            if user.only_in_club(club):
+                logger.info("USER_DELETE user=%s email=%s by=%s",
+                            user.username, user.email, request.user.username)
+                user.delete()
+            else:
+                logger.info("MEMBERSHIP_REMOVE user=%s club=%s by=%s", user.username, club.pk, request.user.username)
+                with transaction.atomic():
+                    Membership.objects.filter(user=user, club=club).delete()
+                    user.student_profiles.filter(club=club).update(user=None)
         return redirect('userManagement:user_list')
 
 

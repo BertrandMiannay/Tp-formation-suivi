@@ -19,19 +19,17 @@ def create_initial_admin(apps, schema_editor):
         return
 
     User = apps.get_model('userManagement', 'CustomUser')
-    Group = apps.get_model('auth', 'Group')
     if User.objects.filter(username=username).exists():
         return
-    user = User.objects.create(
+    # Superutilisateur = super-admin (tous les clubs) ; il devient aussi administrateur du club par défaut
+    # (clubs/0004_memberships_from_groups).
+    User.objects.create(
         username=username,
         email=email,
         password=make_password(password),
         is_staff=True,
         is_superuser=True,
     )
-    # Les groupes de rôles sont créés en post_migrate, donc pas encore présents ici.
-    group, _ = Group.objects.get_or_create(name='admin')
-    user.groups.add(group)
 
 
 class Migration(migrations.Migration):

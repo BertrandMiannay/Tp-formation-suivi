@@ -15,7 +15,10 @@ from django.utils import timezone
 from django.utils.formats import date_format
 from django.utils.text import slugify
 
-from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm, attachable_accounts
+from django.contrib.auth import get_user_model
+
+from clubs.models import Membership
+from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm, manages_account
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
@@ -44,21 +47,34 @@ def _parse_iso_date(value):
 # ---------------------------------------------------------------------------
 
 def attach_account(member, email):
-    """Rattache un compte à l'élève : compte existant sans fiche (ex. encadrant qui suit une formation)
-    ou nouveau compte inactif avec lien d'invitation."""
-    user = attachable_accounts().filter(email__iexact=email).first()
+    """Rattache un compte à l'élève : compte existant sans fiche dans ce club (encadrant qui suit une formation,
+    élève d'un autre club : mêmes identifiants, il retrouvera ce club à sa connexion), ou nouveau compte inactif
+    avec lien d'invitation. Le compte devient membre du club (élève) s'il ne l'était pas."""
+    User = get_user_model()
+    user = (User.objects.filter(email__iexact=email).exclude(student_profiles__club=member.club)
+            .order_by('-is_active', 'pk').first())
     if user is None:
-        user = create_invited_user(email, group_name=Role.STUDENT)
+        user = create_invited_user(email, club=member.club, role=Role.STUDENT)
+    else:
+        Membership.objects.get_or_create(user=user, club=member.club, defaults={'role': Role.STUDENT})
     member.user = user
     member.save(update_fields=['user'])
     return user
 
 
+def shared_account_notice(user, club):
+    """Message pour un compte rattaché qui sert aussi ailleurs (sans dire où)."""
+    if user is not None and not user.only_in_club(club) and user.role_in(club) == Role.STUDENT:
+        return (" Un compte existe déjà pour cet email : l'élève retrouvera ce club à sa prochaine connexion, "
+                "avec ses identifiants habituels.")
+    return ""
+
+
 def deletes_student_account(actor, member):
-    """Supprimer la fiche supprime aussi le compte rattaché s'il s'agit d'un compte élève ; un compte
-    encadrant / administrateur (qui suit une formation) est conservé."""
+    """Supprimer la fiche supprime aussi le compte rattaché s'il s'agit d'un compte élève de ce club seulement ;
+    un compte encadrant / administrateur (qui suit une formation) ou qui sert dans un autre club est conservé."""
     user = member.user if member.user_id else None
-    return user is not None and user.role == Role.STUDENT and can_manage_account(actor, user)
+    return user is not None and manages_account(member) and can_manage_account(actor, user)
 
 
 @club_staff_required
@@ -81,8 +97,8 @@ def student_create(request):
             logger.info("STUDENT_CREATE pk=%s user=%s by=%s", member.pk, user.pk if user else None, request.user.username)
             messages.success(request, f"Élève {member} créé." + (
                 " Transmettez-lui le lien d'invitation pour qu'il choisisse son mot de passe."
-                if user and not user.is_active else ""
-            ))
+                if user and can_view_invitation(request.user, user, request.club) else ""
+            ) + shared_account_notice(user, request.club))
             return redirect('suivi-student-detail', pk=member.pk)
     else:
         form = StudentForm(instance=Member(club=request.club),
@@ -90,33 +106,45 @@ def student_create(request):
     return render(request, 'formation/student_form.html', {'form': form, 'member': None})
 
 
+def _kept_account_label(member):
+    """Nature du compte conservé à la suppression d'une fiche (encadrant, administrateur, compte partagé)."""
+    if not member.user_id:
+        return ''
+    if not member.user.only_in_club(member.club):
+        return "compte utilisé dans un autre club"
+    role = member.user.role_in(member.club)
+    return Role(role).label.lower() if role else ''
+
+
 @club_staff_required
 def student_edit(request, pk):
     member = get_object_or_404(Member, pk=pk, club=request.club)
     if request.method == 'POST':
         if request.POST.get('_action') == 'renew_invite':
-            if member.user_id and can_view_invitation(request.user, member.user):
+            if member.user_id and can_view_invitation(request.user, member.user, request.club):
                 renew_invitation(member.user)
                 messages.success(request, "Nouveau lien d'invitation généré (valable 7 jours).")
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
         form = StudentForm(request.POST, instance=member)
         if form.is_valid():
             email = form.cleaned_data['email']
+            notice = ""
             with transaction.atomic():
                 form.save()
                 if member.user_id is None:
                     if email:
-                        attach_account(member, email)
+                        notice = shared_account_notice(attach_account(member, email), request.club)
                 elif form.manages_account_email and member.user.email != email:
                     member.user.email = email
                     member.user.save(update_fields=['email'])
             logger.info("STUDENT_EDIT pk=%s by=%s", member.pk, request.user.username)
-            messages.success(request, "Fiche élève mise à jour.")
+            messages.success(request, "Fiche élève mise à jour." + notice)
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
     else:
         form = StudentForm(instance=member)
     return render(request, 'formation/student_form.html', {
         'form': form, 'member': member, 'delete_account': deletes_student_account(request.user, member),
+        'kept_account_label': _kept_account_label(member),
     })
 
 
@@ -131,7 +159,8 @@ def student_import(request):
             members = []
             for row in form.cleaned_data['lines']:
                 member = Member.objects.create(club=request.club, first_name=row['first_name'], last_name=row['last_name'])
-                if row['email'] and not attach_account(member, row['email']).is_active:
+                if row['email'] and can_view_invitation(
+                        request.user, attach_account(member, row['email']), request.club):
                     invited += 1
                 if formation:
                     Enrollment.objects.create(member=member, formation=formation)
@@ -164,6 +193,9 @@ def student_delete(request, pk):
         member.delete()
         if delete_account:
             user.delete()
+        elif user is not None and user.role_in(request.club) == Role.STUDENT:
+            # Élève qui n'a plus de fiche dans ce club : il n'y a plus accès (ses autres clubs restent).
+            Membership.objects.filter(user=user, club=request.club).delete()
     messages.success(request, f"Fiche de {member} supprimée.")
     return redirect('suivi-students')
 

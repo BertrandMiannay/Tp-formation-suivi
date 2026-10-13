@@ -7,31 +7,43 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 
-from userManagement.forms import StaffChoiceField
-from userManagement.models import Role
+from userManagement.forms import StaffChoiceField, staff_users
+from userManagement.models import STAFF_ROLES, Role
 from .models import Cursus, Enrollment, Formation, Member
 
 
-def attachable_accounts():
-    """Comptes sans fiche auxquels une fiche élève peut être rattachée : comptes actifs et invitations élève
-    en attente. Une invitation encadrant / admin en attente est exclue : sa fiche montrerait le lien
-    d'invitation aux encadrants, qui pourraient l'accepter à la place du destinataire."""
-    return get_user_model().objects.filter(student_profile__isnull=True).filter(
-        Q(is_active=True) | Q(groups__name=Role.STUDENT)
+def attachable_accounts(club):
+    """Comptes du club sans fiche dans ce club, auxquels une fiche élève peut être rattachée : comptes actifs
+    et invitations élève en attente. Une invitation encadrant / admin en attente est exclue : sa fiche
+    montrerait le lien d'invitation aux encadrants, qui pourraient l'accepter à la place du destinataire."""
+    return get_user_model().objects.filter(memberships__club=club).exclude(student_profiles__club=club).filter(
+        Q(is_active=True) | Q(memberships__club=club, memberships__role=Role.STUDENT)
     ).distinct()
 
 
-def pending_staff_invitations():
-    """Comptes encadrant / admin invités qui n'ont pas encore accepté leur invitation."""
-    return get_user_model().objects.filter(is_active=False).exclude(groups__name=Role.STUDENT)
+def pending_staff_invitations(club):
+    """Comptes invités comme encadrant / admin du club qui n'ont pas encore accepté leur invitation."""
+    return get_user_model().objects.filter(
+        is_active=False, memberships__club=club, memberships__role__in=STAFF_ROLES,
+    )
+
+
+def manages_account(member):
+    """Le club gère le compte rattaché à la fiche (email, suppression avec la fiche) : compte élève membre de
+    ce club seulement. Vrai aussi pour une fiche sans compte."""
+    user = member.user if member.user_id else None
+    return user is None or (user.only_in_club(member.club) and user.role_in(member.club) == Role.STUDENT)
 
 
 class AccountChoiceField(forms.ModelChoiceField):
-    """Comptes sans fiche élève (encadrant qui suit une formation, élève invité depuis la page Utilisateurs…)."""
+    """Comptes du club sans fiche élève (encadrant qui suit une formation, élève invité depuis la page Utilisateurs…)."""
+
+    club = None
 
     def label_from_instance(self, user):
         name = user.get_full_name() or (user.username if user.is_active else "invitation en attente")
-        parts = [name, user.email, user.role_label]
+        role = user.role_in(self.club)
+        parts = [name, user.email, Role(role).label if role else '']
         return ' · '.join(p for p in parts if p)
 
 
@@ -73,7 +85,9 @@ class StudentForm(forms.ModelForm):
             del self.fields['account']
         else:
             self.fields['formation'].queryset = Formation.objects.active().filter(club=self.instance.club)
-            self.fields['account'].queryset = attachable_accounts().order_by('first_name', 'last_name', 'email')
+            self.fields['account'].queryset = attachable_accounts(self.instance.club).order_by(
+                'first_name', 'last_name', 'email')
+            self.fields['account'].club = self.instance.club
             self.selected_account = self._selected_account()
             if self.selected_account:
                 # L'email est celui du compte ; prénom et nom en sont repris s'ils sont renseignés.
@@ -95,9 +109,9 @@ class StudentForm(forms.ModelForm):
 
     @property
     def manages_account_email(self):
-        """La fiche ne pilote l'email que d'un compte élève (ou d'une fiche sans compte)."""
-        user = self.instance.user if self.instance.user_id else None
-        return user is None or user.role == Role.STUDENT
+        """La fiche ne pilote l'email que d'un compte élève de ce club seulement (ou d'une fiche sans compte) :
+        l'email d'un compte encadrant / admin, ou partagé avec un autre club, est géré par son titulaire."""
+        return manages_account(self.instance)
 
     def clean_email(self):
         if getattr(self, 'selected_account', None):
@@ -113,10 +127,10 @@ class StudentForm(forms.ModelForm):
         others = User.objects.filter(email__iexact=email)
         if self.instance.user_id:
             others = others.exclude(pk=self.instance.user_id)
-        owner = others.filter(student_profile__isnull=False).first()
-        if owner:
+        club = self.instance.club
+        if others.filter(student_profiles__club=club).exists():
             raise forms.ValidationError("Cette adresse est déjà utilisée par un autre élève.")
-        if pending_staff_invitations().filter(email__iexact=email).exists():
+        if pending_staff_invitations(club).filter(email__iexact=email).exists():
             raise forms.ValidationError("Une invitation encadrant ou administrateur est en attente pour cette adresse.")
         if self.instance.user_id and others.exists():
             raise forms.ValidationError("Cette adresse est déjà utilisée par un autre compte.")
@@ -140,6 +154,7 @@ class StudentImportForm(forms.Form):
 
     def __init__(self, *args, club, **kwargs):
         super().__init__(*args, **kwargs)
+        self.club = club
         self.fields['formation'].queryset = Formation.objects.active().filter(club=club)
 
     def clean_lines(self):
@@ -152,10 +167,12 @@ class StudentImportForm(forms.Form):
         if len(raw_lines) > self.MAX_LINES:
             raise forms.ValidationError(f"{self.MAX_LINES} élèves au maximum par import.")
         emails_in_use = {
-            e.lower() for e in get_user_model().objects.filter(student_profile__isnull=False)
+            e.lower() for e in get_user_model().objects.filter(student_profiles__club=self.club)
             .values_list('email', flat=True) if e
         }
-        emails_pending_staff = {e.lower() for e in pending_staff_invitations().values_list('email', flat=True) if e}
+        emails_pending_staff = {
+            e.lower() for e in pending_staff_invitations(self.club).values_list('email', flat=True) if e
+        }
         for n, line in raw_lines:
             cells = [c.strip() for c in re.split(r'[;\t,]', line)]
             while cells and not cells[-1]:
@@ -208,6 +225,7 @@ class FormationForm(forms.ModelForm):
         self.fields['cursus'].queryset = Cursus.objects.filter(club=self.instance.club).filter(
             Q(status=Cursus.Status.ACTIVE) | Q(pk=self.instance.cursus_id)
         ).order_by('name')
+        self.fields['managers'].queryset = staff_users(self.instance.club)
 
     def clean(self):
         cleaned = super().clean()

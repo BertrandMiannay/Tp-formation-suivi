@@ -1,7 +1,7 @@
 from django import forms
 
 from formation.models import Formation, Skill
-from userManagement.forms import StaffChoiceField
+from userManagement.forms import StaffChoiceField, staff_users
 from .models import Comment, TrainingSession
 
 
@@ -30,6 +30,7 @@ class TrainingSessionForm(forms.ModelForm):
         if self.instance.pk:
             formation_qs = formation_qs | self.instance.formations.all()
         self.fields['formations'].queryset = formation_qs.distinct().order_by('name')
+        self.fields['instructors'].queryset = staff_users(self.instance.club)
 
 
 def add_comments(*, member, date, author, content='', staff_content='', session=None, skill=None):

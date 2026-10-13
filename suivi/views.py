@@ -564,8 +564,8 @@ def student_detail(request, pk):
         'comment_form': comment_form,
         'open_form': open_form,
         'invite_url': (invite_url_for(request, member.user)
-                       if member.user_id and can_view_invitation(request.user, member.user) else None),
-        'can_reset_password': member.user_id is not None and can_reset_password(request.user, member.user),
+                       if member.user_id and can_view_invitation(request.user, member.user, request.club) else None),
+        'can_reset_password': member.user_id is not None and can_reset_password(request.user, member.user, request.club),
         'season': season,
         'active_tab': 'eleves',
     })
