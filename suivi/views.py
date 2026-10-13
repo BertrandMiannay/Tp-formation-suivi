@@ -597,7 +597,8 @@ def my_tracking(request):
 
 @club_staff_required
 def comment_action(request, pk):
-    """Suppression d'un commentaire, ou bascule visible par l'élève ↔ note équipe. Retour vers `next`."""
+    """Modification du texte, suppression, ou bascule visible par l'élève ↔ note équipe d'un commentaire
+    (tout encadrant). Retour vers `next`."""
     comment = get_object_or_404(Comment, pk=pk)
     next_url = request.GET.get('next', '')
     if not url_has_allowed_host_and_scheme(next_url, {request.get_host()}, request.is_secure()):
@@ -605,7 +606,14 @@ def comment_action(request, pk):
     if request.method == 'POST':
         # Boutons éventuellement placés dans un autre formulaire : nom distinct de `_action`.
         action = request.POST.get('comment_action')
-        if action == 'delete':
+        if action == 'edit':
+            content = request.POST.get(f'comment_{comment.pk}_content', '').strip()
+            if content:
+                comment.content = content
+                comment.save(update_fields=['content'])
+            else:
+                messages.error(request, "Le commentaire est vide : utilisez ✕ pour le supprimer.")
+        elif action == 'delete':
             comment.delete()
         elif action == 'toggle':
             comment.staff_only = not comment.staff_only

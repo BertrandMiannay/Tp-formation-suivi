@@ -199,6 +199,21 @@ class SuiviTestCase(SuiviFixtures):
         self.assertRedirects(resp, back, fetch_redirect_response=False)
         comment.refresh_from_db()
         self.assertTrue(comment.staff_only)
+        # Modification du texte par un autre encadrant ; un texte vide est refusé
+        other = get_user_model().objects.create_user('moniteur2', 'm2@example.com', 'pwd')
+        other.groups.add(Group.objects.get(name='instructor'))
+        self.client.force_login(other)
+        self.client.post(url, {'comment_action': 'edit', f'comment_{comment.pk}_content': '  Texte corrigé '})
+        comment.refresh_from_db()
+        self.assertEqual((comment.content, comment.staff_only), ('Texte corrigé', True))
+        self.client.post(url, {'comment_action': 'edit', f'comment_{comment.pk}_content': ' '})
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, 'Texte corrigé')
+        self.client.force_login(self.instructor)
+        # Champ de modification proposé sur la fiche élève
+        resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, f'name="comment_{comment.pk}_content"')
+        self.assertContains(resp, f'form="comment-form-{comment.pk}"')
         # URL de retour externe ignorée
         resp = self.client.post(url + '?next=https://evil.example.com/', {'comment_action': 'delete'})
         self.assertRedirects(resp, back, fetch_redirect_response=False)
@@ -208,7 +223,9 @@ class SuiviTestCase(SuiviFixtures):
         comment = Comment.objects.create(member=self.alice, date=date(2026, 10, 7), content='Texte')
         self.client.force_login(self.student_user)
         self.client.post(reverse('suivi-comment', args=[comment.pk]), {'comment_action': 'delete'})
-        self.assertTrue(Comment.objects.exists())
+        self.client.post(reverse('suivi-comment', args=[comment.pk]),
+                         {'comment_action': 'edit', f'comment_{comment.pk}_content': 'Piraté'})
+        self.assertEqual(Comment.objects.get().content, 'Texte')
 
     def test_students_cannot_access_staff_pages(self):
         session = self._create_session()

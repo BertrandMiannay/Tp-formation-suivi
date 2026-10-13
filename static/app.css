@@ -129,6 +129,11 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .comment-btn:hover { opacity:1; }
 .comment-del { color:#dc2626; }
 .comment-list { margin-bottom:0.25rem; }
+.comment-edit { display:none; flex-basis:100%; gap:0.35rem; align-items:flex-start; flex-wrap:wrap; }
+.comment-edit textarea { flex:1 1 14rem; min-width:0; font-size:0.85rem; padding:0.3rem 0.4rem; }
+.comment-edit .btn { font-size:0.8rem; padding:0.25rem 0.6rem; }
+.comment-item.editing .comment-edit { display:flex; }
+.comment-item.editing .comment-text, .comment-item.editing .comment-actions { display:none; }
 .badge-cursus { background:#e0e7ff; color:#3730a3; }
 .badge-enroll-active { background:#dbeafe; color:#1e40af; }
 .badge-enroll-completed { background:#dcfce7; color:#166534; }
