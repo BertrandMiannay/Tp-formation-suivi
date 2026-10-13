@@ -18,16 +18,17 @@
             {% endif %}{% endwith %}
         </p>
     </div>
-    {% if edit_form %}
     <div class="actions" style="margin-bottom:1rem;">
+        <a href="{% url 'formation-fiche-vierge' formation.pk %}" class="btn btn-secondary" title="Fiche d'évaluation vierge à imprimer">Fiche vierge (PDF)</a>
+        {% if edit_form %}
         <button type="button" class="btn btn-secondary" onclick="const c = document.getElementById('edit-card'); c.style.display = c.style.display === 'none' ? '' : 'none'">Modifier</button>
         <form method="post" class="inline-form">
             {% csrf_token %}
             <input type="hidden" name="_action" value="toggle_status">
             <button type="submit" class="btn btn-secondary">{% if formation.status == 'active' %}Clôturer{% else %}Rouvrir{% endif %}</button>
         </form>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 {% if edit_form %}
