@@ -299,6 +299,28 @@ class SuiviTestCase(SuiviFixtures):
         for hidden in ['Encore sans prévenir', 'Stress en descente', 'Note interne']:
             self.assertNotContains(resp, hidden)
 
+    def test_worked_skill_comment_visible_to_student(self):
+        """Le commentaire d'une compétence travaillée apparaît dans « Mon suivi », même sans
+        évaluation et même quand une évaluation plus récente existe."""
+        session = self._create_session()
+        url = reverse('suivi-session-detail', args=[session.pk])
+        self.client.post(url, {'_action': 'attendance', f'att_{self.alice.pk}': 'present'})
+        self.client.post(url, {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            f'ws_{self.skill_a.pk}': 'on', f'ws_{self.skill_a.pk}_comment': 'Palmage à travailler',
+            f'ws_{self.skill_a.pk}_staff_comment': 'Peu motivé',
+        })
+        self.assertFalse(SkillEvaluation.objects.exists())
+
+        resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, 'Palmage à travailler')
+        self.assertContains(resp, 'Peu motivé')
+
+        self.client.force_login(self.student_user)
+        resp = self.client.get(reverse('suivi-mine'))
+        self.assertContains(resp, 'Palmage à travailler')
+        self.assertNotContains(resp, 'Peu motivé')
+
     def test_my_tracking_without_profile(self):
         self.client.force_login(self.instructor)
         resp = self.client.get(reverse('suivi-mine'))
