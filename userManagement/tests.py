@@ -7,6 +7,8 @@ from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from formation.models import Member
+
 from .models import Role
 
 
@@ -233,3 +235,61 @@ class SuperuserProtectionTests(TestCase):
         self.assertRedirects(self.client.get('/admin/login/'), reverse('home'), fetch_redirect_response=False)
         self.client.force_login(self.root)
         self.assertEqual(self.client.get('/admin/').status_code, 200)
+
+
+class PendingStaffInvitationTests(TestCase):
+    """Un encadrant ne doit jamais obtenir le lien d'invitation d'un compte encadrant / admin en attente."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from .views import create_invited_user
+        User = get_user_model()
+        cls.instructor = User.objects.create_user('encadrant', 'enc@example.com', 'pwd')
+        cls.instructor.groups.add(Group.objects.get(name=Role.INSTRUCTOR))
+        cls.pending_admin = create_invited_user('chef@example.com', Role.ADMIN)
+        cls.pending_student = create_invited_user('eleve@example.com', Role.STUDENT)
+
+    def setUp(self):
+        self.client.force_login(self.instructor)
+
+    def test_pending_staff_invitation_not_offered_as_existing_account(self):
+        response = self.client.get(reverse('eleve-create'))
+        self.assertNotContains(response, 'chef@example.com')
+        self.assertContains(response, 'eleve@example.com')
+        response = self.client.post(reverse('eleve-create'),
+                                    {'first_name': 'A', 'last_name': 'B', 'account': self.pending_admin.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Member.objects.filter(user=self.pending_admin).exists())
+
+    def test_email_of_pending_staff_invitation_rejected(self):
+        response = self.client.post(reverse('eleve-create'),
+                                    {'first_name': 'A', 'last_name': 'B', 'email': 'Chef@example.com'})
+        self.assertFormError(response.context['form'], 'email',
+                             'Une invitation encadrant ou administrateur est en attente pour cette adresse.')
+        response = self.client.post(reverse('eleve-import'), {'lines': 'B ; A ; chef@example.com'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Member.objects.filter(user=self.pending_admin).exists())
+
+    def test_invitation_link_hidden_from_instructor_for_staff_account(self):
+        member = Member.objects.create(first_name='A', last_name='B', user=self.pending_admin)
+        token = self.pending_admin.invite_token
+        self.assertNotContains(self.client.get(reverse('suivi-student-detail', args=[member.pk])), str(token))
+        self.client.post(reverse('eleve-edit', args=[member.pk]), {'_action': 'renew_invite'})
+        self.pending_admin.refresh_from_db()
+        self.assertEqual(self.pending_admin.invite_token, token)
+
+    def test_student_invitation_still_attached_and_shown(self):
+        response = self.client.post(reverse('eleve-create'),
+                                    {'first_name': 'A', 'last_name': 'B', 'email': 'eleve@example.com'})
+        self.assertTrue(Member.objects.filter(user=self.pending_student).exists())
+        self.assertContains(self.client.get(response.url), str(self.pending_student.invite_token))
+
+    def test_accept_invite_username_is_case_insensitive_and_validated(self):
+        get_user_model().objects.create_user('Paul', 'paul@example.com', 'pwd')
+        url = reverse('userManagement:accept_invite', args=[self.pending_student.invite_token])
+        for username in ['paul', 'avec espace', 'x' * 151]:
+            response = self.client.post(url, {'username': username,
+                                              'password1': 'Plongee-2026!', 'password2': 'Plongee-2026!'})
+            self.assertEqual(response.status_code, 200, username)
+        self.pending_student.refresh_from_db()
+        self.assertFalse(self.pending_student.is_active)

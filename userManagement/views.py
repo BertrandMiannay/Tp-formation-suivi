@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model, login, password_validation, upda
 from django.contrib import messages
 from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import Group
 from django.http import Http404
@@ -85,6 +86,12 @@ def can_reset_password(actor, target):
     if not target.is_active or not can_manage_account(actor, target):
         return False
     return actor.is_administrator or (actor.is_club_staff and target.role == Role.STUDENT)
+
+
+def can_view_invitation(actor, target):
+    """Lien d'invitation d'un compte en attente : un admin voit tous les liens ; un encadrant, seulement ceux
+    des comptes élèves (accepter l'invitation d'un compte encadrant / admin donnerait ses droits)."""
+    return not target.is_active and (actor.is_administrator or target.role == Role.STUDENT)
 
 
 def password_reset_url_for(request, user):
@@ -167,7 +174,7 @@ class InvitationForm(forms.Form):
 
 
 class AcceptInviteForm(forms.Form):
-    username = forms.CharField(label="Nom d'utilisateur")
+    username = forms.CharField(label="Nom d'utilisateur", max_length=150, validators=[UnicodeUsernameValidator()])
     password1 = forms.CharField(label='Mot de passe', widget=forms.PasswordInput)
     password2 = forms.CharField(label='Confirmer le mot de passe', widget=forms.PasswordInput)
 
@@ -177,7 +184,8 @@ class AcceptInviteForm(forms.Form):
 
     def clean_username(self):
         username = self.cleaned_data['username']
-        qs = User.objects.filter(username=username)
+        # Insensible à la casse : allauth retrouve le compte à la connexion sans tenir compte de la casse.
+        qs = User.objects.filter(username__iexact=username)
         if self.user:
             qs = qs.exclude(pk=self.user.pk)
         if qs.exists():

@@ -6,7 +6,6 @@ from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.http import HttpResponse
@@ -16,7 +15,7 @@ from django.utils import timezone
 from django.utils.formats import date_format
 from django.utils.text import slugify
 
-from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm
+from formation.forms import FormationForm, QuickStudentForm, StudentForm, StudentImportForm, attachable_accounts
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
@@ -24,7 +23,8 @@ from suivi.forms import add_comments
 from suivi.models import Comment, TrainingSession
 from suivi.views import attendance_matrix
 from userManagement.views import (
-    admin_required, can_manage_account, club_staff_required, create_invited_user, renew_invitation,
+    admin_required, can_manage_account, can_view_invitation, club_staff_required, create_invited_user,
+    renew_invitation,
 )
 from userManagement.models import Role
 
@@ -46,7 +46,7 @@ def _parse_iso_date(value):
 def attach_account(member, email):
     """Rattache un compte à l'élève : compte existant sans fiche (ex. encadrant qui suit une formation)
     ou nouveau compte inactif avec lien d'invitation."""
-    user = get_user_model().objects.filter(email__iexact=email, student_profile__isnull=True).first()
+    user = attachable_accounts().filter(email__iexact=email).first()
     if user is None:
         user = create_invited_user(email, group_name=Role.STUDENT)
     member.user = user
@@ -94,7 +94,7 @@ def student_edit(request, pk):
     member = get_object_or_404(Member, pk=pk)
     if request.method == 'POST':
         if request.POST.get('_action') == 'renew_invite':
-            if member.user_id and not member.user.is_active:
+            if member.user_id and can_view_invitation(request.user, member.user):
                 renew_invitation(member.user)
                 messages.success(request, "Nouveau lien d'invitation généré (valable 7 jours).")
             return redirect(reverse('suivi-student-detail', args=[pk]) + '#infos')
