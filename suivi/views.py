@@ -54,7 +54,8 @@ def _attendance_stats(attendances):
 
 def _skills_progress(member):
     """Structure formation → catégories → compétences du cursus, avec statut, nb de séances où
-    l'élève a travaillé la compétence et dernière évaluation. Le statut d'une compétence est propre
+    l'élève a travaillé la compétence, dernière évaluation et commentaires de séance (plus récents
+    d'abord). Le statut d'une compétence est propre
     à l'élève : un cursus suivi dans plusieurs formations n'est affiché qu'une fois (la plus récente)."""
     by_cursus = {}
     for enrollment in (
@@ -77,6 +78,13 @@ def _skills_progress(member):
             .values('skill_id').annotate(n=Count('session_id', distinct=True))
         )
     }
+    session_comments = {}
+    for ws in (
+        WorkedSkill.objects.filter(member=member, skill_id__in=skill_ids)
+        .exclude(comment='', staff_comment='')
+        .select_related('session', 'author').order_by('-session__date', '-session__pk')
+    ):
+        session_comments.setdefault(ws.skill_id, []).append(ws)
     last_eval = {}
     for ev in SkillEvaluation.objects.filter(member=member, skill_id__in=skill_ids).select_related('author').order_by('-date', '-pk'):
         last_eval.setdefault(ev.skill_id, ev)
@@ -102,6 +110,7 @@ def _skills_progress(member):
                     'status_display': MemberSkill.SkillStatus(status).label,
                     'worked': worked,
                     'last_eval': last_eval.get(s.pk),
+                    'session_comments': session_comments.get(s.pk, []),
                 })
             categories.append({'name': category.name, 'skills': skills})
         counts['acquired_pct'] = round(100 * counts['acquired'] / counts['total']) if counts['total'] else 0
@@ -196,6 +205,9 @@ def _tracking_sheet(member, season, for_student=False):
                 for s in cat['skills']:
                     if s['last_eval']:
                         s['last_eval'].staff_comment = ''
+                    s['session_comments'] = [ws for ws in s['session_comments'] if ws.comment]
+                    for ws in s['session_comments']:
+                        ws.staff_comment = ''
     return {
         'attendances': attendances,
         'stats': _attendance_stats(attendances),
