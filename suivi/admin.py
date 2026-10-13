@@ -11,8 +11,8 @@ class AttendanceInline(admin.TabularInline):
 
 @admin.register(TrainingSession)
 class TrainingSessionAdmin(admin.ModelAdmin):
-    list_display      = ('date', 'title', 'season')
-    list_filter       = ('season',)
+    list_display      = ('date', 'title', 'club', 'season')
+    list_filter       = ('club', 'season')
     filter_horizontal = ('formations', 'instructors')
     inlines           = [AttendanceInline]
 

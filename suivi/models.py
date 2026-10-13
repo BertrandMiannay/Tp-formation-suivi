@@ -1,12 +1,15 @@
 from django.conf import settings
 from django.db import models
 
+from clubs.models import Club, get_default_club
 from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill
 
 
 class TrainingSession(models.Model):
     """Séance hebdomadaire de formation."""
 
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, default=get_default_club, related_name='training_sessions',
+                             verbose_name='Club')
     season      = models.ForeignKey(Season, null=True, blank=True, on_delete=models.SET_NULL, related_name='training_sessions')
     date        = models.DateField()
     title       = models.CharField(max_length=200, blank=True, help_text="Thème de la séance (facultatif)")
