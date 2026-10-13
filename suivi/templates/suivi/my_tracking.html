@@ -15,17 +15,14 @@
     <h3 style="margin:2rem 0 0.75rem;">Compétences</h3>
     {% include "suivi/_skills_progress.html" %}
 
-    <h3 style="margin:2rem 0 0.75rem;">Remarques de l'équipe encadrante</h3>
-    {% for note in sheet.notes %}
-    <div class="card" style="padding:0.75rem 1rem; margin-bottom:0.75rem;">
-        <div style="font-size:0.85rem;"><strong>{{ note.date|date:"d/m/Y" }}</strong>
-            {% if note.author %}<span class="muted">— {{ note.author.get_full_name|default:note.author.username }}</span>{% endif %}
-        </div>
-        <p style="white-space:pre-line; margin-top:0.4rem;">{{ note.content }}</p>
-    </div>
+    <h3 style="margin:2rem 0 0.75rem;">Commentaires de l'équipe encadrante</h3>
+    <div class="card">
+    {% for c in sheet.comments %}
+        {% include "_comment.html" with show_links=True %}
     {% empty %}
-    <p class="muted">Aucune remarque pour le moment.</p>
+        <p class="muted">Aucun commentaire pour le moment.</p>
     {% endfor %}
+    </div>
     {% endwith %}
 {% empty %}
 <p class="muted">Aucune fiche élève n'est rattachée à votre compte. Si vous suivez une formation, demandez à un encadrant de vous créer une fiche avec votre adresse email ({{ user.email|default:"non renseignée" }}).</p>

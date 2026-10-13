@@ -6,7 +6,7 @@
 <a href="{% url 'suivi-student-detail' member.pk %}#competences" class="btn btn-secondary" style="margin-bottom:1.5rem; display:inline-block;">← Fiche de {{ member.first_name }}</a>
 
 <h1 style="margin-bottom:0.25rem;">Évaluation — {{ member.first_name }} {{ member.last_name }}</h1>
-<p style="color:#555; margin-bottom:1.5rem;">Statut de chaque compétence et historique des évaluations.</p>
+<p style="color:#555; margin-bottom:1.5rem;">Statut de chaque compétence, historique des évaluations et commentaires (en séance ou hors séance).</p>
 
 <div id="tab-formation">
     {% if formations %}
@@ -57,29 +57,31 @@
                                     </select>
                                 </td>
                                 <td style="padding:0.4rem 0.5rem;">
-                                    {% include "_comment_fields.html" with prefix="skill" pk=skill.pk comment='' staff_comment='' %}
+                                    {% include "_comment_fields.html" with prefix="skill" pk=skill.pk %}
                                 </td>
                             </tr>
                             {% if skill.evaluations %}
                             <tr class="eval-history" style="border-bottom:1px solid #f3f4f6;">
                                 <td colspan="3" style="padding:0 0.5rem 0.5rem 1.5rem;">
                                     {% for ev in skill.evaluations %}
-                                    <div style="font-size:0.78rem; color:#6b7280; display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem 0.75rem; padding:0.15rem 0; {% if not forloop.last %}border-bottom:1px dotted #e5e7eb;{% endif %}">
+                                    {% if ev.kind == 'comment' %}
+                                    {% include "_comment.html" with c=ev.comment manage=True in_form=True next=request.path %}
+                                    {% else %}
+                                    <div style="font-size:0.78rem; color:#6b7280; display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem 0.75rem; padding:0.15rem 0;">
                                         <span style="white-space:nowrap; color:#9ca3af;">{{ ev.date|date:"d/m/Y" }}</span>
                                         <span style="white-space:nowrap;">
                                             {% if ev.status == 'acquired' %}<span style="color:#166534;">✓ Acquis</span>
                                             {% elif ev.status == 'in_progress' %}<span style="color:#92400e;">~ En cours</span>
                                             {% else %}<span style="color:#9ca3af;">— Non acquis</span>{% endif %}
                                         </span>
-                                        {% if ev.comment %}<span style="color:#374151;">{{ ev.comment }}</span>{% endif %}
-                                        {% if ev.staff_comment %}<span style="color:#3730a3;"><span class="private-mark" title="Note réservée à l'équipe encadrante">🔒</span> {{ ev.staff_comment }}</span>{% endif %}
                                         {% if ev.author %}<span style="white-space:nowrap; color:#9ca3af;">par {{ ev.author }}</span>{% endif %}
                                         <button type="submit" name="_delete_ev" value="{{ ev.pk }}"
                                             formaction="{% url 'eleve-evaluation-delete' member.pk ev.pk %}"
-                                            onclick="event.stopPropagation(); return confirm('Supprimer ce commentaire ?');"
+                                            onclick="event.stopPropagation(); return confirm('Supprimer cette évaluation ?');"
                                             title="Supprimer"
                                             style="background:none; border:none; cursor:pointer; color:#dc2626; font-size:0.85rem; padding:0; line-height:1;">✕</button>
                                     </div>
+                                    {% endif %}
                                     {% endfor %}
                                 </td>
                             </tr>

@@ -9,7 +9,7 @@ from django.urls import reverse
 from formation.models import (
     Cursus, CursusCategory, Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation,
 )
-from .models import Attendance, StudentNote, TrainingSession, WorkedSkill
+from .models import Attendance, Comment, TrainingSession, WorkedSkill
 
 
 class SuiviFixtures(TestCase):
@@ -85,7 +85,10 @@ class SuiviTestCase(SuiviFixtures):
             f'att_{self.bob.pk}': 'absent', f'att_{self.bob.pk}_comment': 'malade',
         })
         self.assertEqual(Attendance.objects.get(member=self.alice).status, 'present')
-        self.assertEqual(Attendance.objects.get(member=self.bob).comment, 'malade')
+        self.assertEqual(Attendance.objects.get(member=self.bob).status, 'absent')
+        c = Comment.objects.get()
+        self.assertEqual((c.member, c.session, c.skill, c.content, c.staff_only, c.date),
+                         (self.bob, session, None, 'malade', False, session.date))
 
         # Un participant d'une autre formation peut être ajouté
         self.client.post(url, {'_action': 'add_member', 'member_id': self.carol.pk})
@@ -121,9 +124,10 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(resp, f'id="eleve-{self.alice.pk}"')
         self.assertNotContains(resp, f'id="eleve-{self.bob.pk}"')  # absent, rien de saisi
 
-        # Désélectionner un statut supprime la présence
+        # Désélectionner un statut supprime la présence, pas le commentaire
         self.client.post(url, {'_action': 'attendance', f'att_{self.alice.pk}': 'present'})
         self.assertFalse(Attendance.objects.filter(member=self.bob).exists())
+        self.assertTrue(Comment.objects.filter(member=self.bob, content='malade').exists())
 
     def test_overview_and_student_pages(self):
         session = self._create_session()
@@ -152,32 +156,76 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(resp, '1 séance')
         self.assertContains(resp, 'Vidage de masque <span class="badge badge-in_progress">')
 
-    def test_notes(self):
+    def test_comments_from_student_page(self):
+        """Fiche élève : commentaire sans séance ni compétence, ou rattaché à l'une et / ou l'autre ;
+        la partie visible et la note équipe donnent deux commentaires."""
+        session = self._create_session()
+        Attendance.objects.create(session=session, member=self.alice, status='present')
         url = reverse('suivi-student-detail', args=[self.alice.pk])
-        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'staff_content': 'Privé'})
-        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': 'Bravo !',
-                               'staff_content': 'A surveiller'})
-        self.client.post(url, {'_action': 'add_note', 'date': '2026-10-07', 'content': '  '})
-        self.assertEqual(StudentNote.objects.count(), 2)
+        self.client.post(url, {'_action': 'add_comment', 'date': '2026-10-07', 'staff_content': 'Privé'})
+        self.client.post(url, {'_action': 'add_comment', 'date': '2026-10-08', 'content': 'Bravo !',
+                               'staff_content': 'A surveiller', 'session': session.pk, 'skill': self.skill_a.pk})
+        resp = self.client.post(url, {'_action': 'add_comment', 'date': '2026-10-07', 'content': '  '})
+        self.assertContains(resp, 'Le commentaire est vide.')
+        # Compétence d'un cursus que l'élève ne suit pas : refusée
+        other = Skill.objects.create(category=CursusCategory.objects.create(
+            cursus=Cursus.objects.get(name='Niveau 2'), name='X'), name='Autre')
+        self.client.post(url, {'_action': 'add_comment', 'date': '2026-10-07', 'content': 'x', 'skill': other.pk})
+        self.assertEqual(
+            sorted(Comment.objects.values_list('content', 'staff_only', 'session', 'skill')),
+            [('A surveiller', True, session.pk, self.skill_a.pk), ('Bravo !', False, session.pk, self.skill_a.pk),
+             ('Privé', True, None, None)],
+        )
         resp = self.client.get(url)
+        self.assertContains(resp, 'Commentaires (3)')
         self.assertContains(resp, 'Privé')
         self.assertContains(resp, 'A surveiller')
+        # Le commentaire rattaché à la compétence apparaît aussi dans la séance et sur la compétence
+        self.assertContains(self.client.get(reverse('suivi-session-detail', args=[session.pk])), 'Bravo !')
+        self.assertContains(resp, '💬 2 commentaires')
 
-        # Depuis une séance : les deux parties dans la même note
-        session = self._create_session()
-        self.client.post(reverse('suivi-session-detail', args=[session.pk]), {
-            '_action': 'note', 'member_id': self.alice.pk, 'content': 'Belle séance', 'staff_content': 'Fatigué',
-        })
-        note = StudentNote.objects.get(session=session)
-        self.assertEqual((note.content, note.staff_content), ('Belle séance', 'Fatigué'))
-
-        # L'élève ne voit que la partie qui lui est destinée
+        # L'élève ne voit que les commentaires qui lui sont destinés
         self.client.force_login(self.student_user)
         resp = self.client.get(reverse('suivi-mine'))
         self.assertContains(resp, 'Bravo !')
-        self.assertContains(resp, 'Belle séance')
-        for hidden in ['Privé', 'A surveiller', 'Fatigué']:
+        for hidden in ['Privé', 'A surveiller']:
             self.assertNotContains(resp, hidden)
+
+    def test_comment_toggle_and_delete(self):
+        comment = Comment.objects.create(member=self.alice, date=date(2026, 10, 7), content='Texte')
+        url = reverse('suivi-comment', args=[comment.pk])
+        back = reverse('suivi-student-detail', args=[self.alice.pk]) + '#commentaires'
+        resp = self.client.post(url + '?next=' + back.replace('#', '%23'), {'comment_action': 'toggle'})
+        self.assertRedirects(resp, back, fetch_redirect_response=False)
+        comment.refresh_from_db()
+        self.assertTrue(comment.staff_only)
+        # Modification du texte par un autre encadrant ; un texte vide est refusé
+        other = get_user_model().objects.create_user('moniteur2', 'm2@example.com', 'pwd')
+        other.groups.add(Group.objects.get(name='instructor'))
+        self.client.force_login(other)
+        self.client.post(url, {'comment_action': 'edit', f'comment_{comment.pk}_content': '  Texte corrigé '})
+        comment.refresh_from_db()
+        self.assertEqual((comment.content, comment.staff_only), ('Texte corrigé', True))
+        self.client.post(url, {'comment_action': 'edit', f'comment_{comment.pk}_content': ' '})
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, 'Texte corrigé')
+        self.client.force_login(self.instructor)
+        # Champ de modification proposé sur la fiche élève
+        resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
+        self.assertContains(resp, f'name="comment_{comment.pk}_content"')
+        self.assertContains(resp, f'form="comment-form-{comment.pk}"')
+        # URL de retour externe ignorée
+        resp = self.client.post(url + '?next=https://evil.example.com/', {'comment_action': 'delete'})
+        self.assertRedirects(resp, back, fetch_redirect_response=False)
+        self.assertFalse(Comment.objects.exists())
+
+        # Réservé à l'équipe encadrante
+        comment = Comment.objects.create(member=self.alice, date=date(2026, 10, 7), content='Texte')
+        self.client.force_login(self.student_user)
+        self.client.post(reverse('suivi-comment', args=[comment.pk]), {'comment_action': 'delete'})
+        self.client.post(reverse('suivi-comment', args=[comment.pk]),
+                         {'comment_action': 'edit', f'comment_{comment.pk}_content': 'Piraté'})
+        self.assertEqual(Comment.objects.get().content, 'Texte')
 
     def test_students_cannot_access_staff_pages(self):
         session = self._create_session()
@@ -188,16 +236,18 @@ class SuiviTestCase(SuiviFixtures):
         ]:
             self.assertRedirects(self.client.get(reverse(name, args=args)), reverse('home'), fetch_redirect_response=False)
         self.client.post(reverse('suivi-student-detail', args=[self.alice.pk]), {
-            '_action': 'add_note', 'date': '2026-10-07', 'content': 'x',
+            '_action': 'add_comment', 'date': '2026-10-07', 'content': 'x',
         })
-        self.assertFalse(StudentNote.objects.exists())
+        self.assertFalse(Comment.objects.exists())
 
     def test_delete_session(self):
         session = self._create_session()
         Attendance.objects.create(session=session, member=self.alice, status='present')
+        Comment.objects.create(member=self.alice, session=session, date=session.date, content='Gardé')
         self.client.post(reverse('suivi-session-delete', args=[session.pk]))
         self.assertFalse(TrainingSession.objects.exists())
         self.assertFalse(Attendance.objects.exists())
+        self.assertIsNone(Comment.objects.get().session)
 
     def test_evaluation_page_traces_status_changes_with_author(self):
         url = reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk])
@@ -265,25 +315,30 @@ class SuiviTestCase(SuiviFixtures):
             f'att_{self.alice.pk}': 'present', f'att_{self.alice.pk}_comment': 'Retard visible',
             f'att_{self.alice.pk}_staff_comment': 'Encore sans prévenir',
         })
-        att = Attendance.objects.get(member=self.alice)
-        self.assertEqual((att.comment, att.staff_comment), ('Retard visible', 'Encore sans prévenir'))
+        self.assertEqual(
+            sorted(Comment.objects.filter(session=session, skill=None).values_list('content', 'staff_only')),
+            [('Encore sans prévenir', True), ('Retard visible', False)],
+        )
         # Compétence : les deux commentaires sur la même séance
         self.client.post(url, {
             '_action': 'worked_skills', 'member_id': self.alice.pk,
             f'ws_{self.skill_a.pk}_status': 'in_progress', f'ws_{self.skill_a.pk}_comment': 'Bravo',
             f'ws_{self.skill_a.pk}_staff_comment': 'Stress en descente',
         })
-        ws = WorkedSkill.objects.get(member=self.alice, skill=self.skill_a)
-        self.assertEqual((ws.comment, ws.staff_comment), ('Bravo', 'Stress en descente'))
-        ev = SkillEvaluation.objects.get()
-        self.assertEqual((ev.comment, ev.staff_comment), ('Bravo', 'Stress en descente'))
+        self.assertEqual(
+            sorted(Comment.objects.filter(session=session, skill=self.skill_a).values_list('content', 'staff_only')),
+            [('Bravo', False), ('Stress en descente', True)],
+        )
+        self.assertEqual(SkillEvaluation.objects.get().status, 'in_progress')
 
-        # Ajouter une note équipe seule depuis la page d'évaluation
+        # Ajouter une note équipe seule depuis la page d'évaluation : compétence sans séance, sans évaluation
         self.client.post(reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk]), {
             f'skill_{self.skill_a.pk}_status': 'in_progress',
             f'skill_{self.skill_b.pk}_staff_comment': 'Note interne',
         })
-        self.assertEqual(SkillEvaluation.objects.get(skill=self.skill_b).staff_comment, 'Note interne')
+        c = Comment.objects.get(skill=self.skill_b)
+        self.assertEqual((c.session, c.content, c.staff_only), (None, 'Note interne', True))
+        self.assertEqual(SkillEvaluation.objects.count(), 1)
 
         for name in ['suivi-student-detail', 'eleve-evaluation']:
             resp = self.client.get(reverse(name, args=[self.alice.pk]))
@@ -291,6 +346,12 @@ class SuiviTestCase(SuiviFixtures):
         resp = self.client.get(url)
         self.assertContains(resp, 'Encore sans prévenir')
         self.assertContains(resp, f'name="ws_{self.skill_a.pk}_staff_comment"')
+        # Tableau des présences : commentaires dans l'infobulle
+        resp = self.client.get(reverse('suivi-students') + '?vue=presences')
+        self.assertContains(resp, 'Retard visible — 🔒 Encore sans prévenir')
+        # Export PDF (remis à l'élève) généré sans les notes équipe
+        resp = self.client.get(reverse('eleve-evaluation-export', args=[self.alice.pk, self.cursus.pk]))
+        self.assertEqual(resp.status_code, 200)
 
         self.client.force_login(self.student_user)
         resp = self.client.get(reverse('suivi-mine'))
@@ -312,6 +373,13 @@ class SuiviTestCase(SuiviFixtures):
         })
         self.assertFalse(SkillEvaluation.objects.exists())
 
+        # Un commentaire seul suffit à marquer la compétence comme travaillée
+        self.client.post(url, {
+            '_action': 'worked_skills', 'member_id': self.alice.pk,
+            f'ws_{self.skill_b.pk}_comment': 'Embout perdu',
+        })
+        self.assertEqual(set(WorkedSkill.objects.values_list('skill', flat=True)), {self.skill_b.pk})
+
         resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
         self.assertContains(resp, 'Palmage à travailler')
         self.assertContains(resp, 'Peu motivé')
@@ -321,9 +389,9 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(resp, 'Palmage à travailler')
         self.assertNotContains(resp, 'Peu motivé')
 
-    def test_skill_session_comments_history(self):
-        """Chaque compétence liste les commentaires de toutes les séances où elle a été travaillée ;
-        l'élève ne voit ni les notes équipe ni les séances commentées uniquement par l'équipe."""
+    def test_skill_comments_history(self):
+        """Chaque compétence liste ses commentaires, de toutes les séances et hors séance ;
+        l'élève ne voit pas les notes équipe."""
         first = self._create_session()
         second = TrainingSession.objects.create(date=date(2026, 10, 14), season=first.season)
         second.formations.add(self.formation)
@@ -338,15 +406,21 @@ class SuiviTestCase(SuiviFixtures):
             b: 'on', f'{b}_staff_comment': 'Équipe seulement',
         })
 
+        self.client.post(reverse('eleve-evaluation-save', args=[self.alice.pk, self.cursus.pk]), {
+            f'skill_{self.skill_a.pk}_comment': 'Revu hors séance',
+        })
+
         resp = self.client.get(reverse('suivi-student-detail', args=[self.alice.pk]))
-        self.assertContains(resp, '2 commentaires de séance')
-        self.assertContains(resp, '1 commentaire de séance')
+        self.assertContains(resp, '💬 4 commentaires')
+        self.assertContains(resp, '💬 1 commentaire<')
         self.assertContains(resp, 'Appréhension')
+        self.assertContains(resp, 'hors séance')
 
         self.client.force_login(self.student_user)
         resp = self.client.get(reverse('suivi-mine'))
-        self.assertContains(resp, '2 commentaires de séance')
-        self.assertNotContains(resp, '1 commentaire de séance')
+        self.assertContains(resp, '💬 3 commentaires')
+        self.assertNotContains(resp, '💬 1 commentaire<')
+        self.assertContains(resp, 'Revu hors séance')
         self.assertContains(resp, 'Premier essai')
         self.assertContains(resp, 'Beaucoup mieux')
         self.assertNotContains(resp, 'Appréhension')

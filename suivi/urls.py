@@ -10,5 +10,6 @@ urlpatterns = [
     path("presences/", views.attendance_overview, name="suivi-attendance"),
     path("eleves/", views.student_list, name="suivi-students"),
     path("eleves/<int:pk>/", views.student_detail, name="suivi-student-detail"),
+    path("commentaires/<int:pk>/", views.comment_action, name="suivi-comment"),
     path("mon-suivi/", views.my_tracking, name="suivi-mine"),
 ]
