@@ -622,57 +622,81 @@ def evaluation_save(request, pk, cursus_pk):
     return redirect('eleve-evaluation', pk=pk)
 
 
-@club_staff_required
-def evaluation_export(request, pk, cursus_pk):
+def _pdf_response(buf, raw_name):
+    safe_ascii = raw_name.replace('"', '').replace('\n', '').replace('\r', '')
+    response = HttpResponse(buf, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(raw_name)}"
+    )
+    return response
+
+
+def _build_evaluation_pdf(cursus, member=None, subtitle=None):
+    """Fiche d'évaluation PDF d'un cursus. Avec `member` : statut et commentaires de l'élève ;
+    sans : modèle vierge à remplir à la main (cases à cocher par statut, commentaires vides)."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
 
-    member = get_object_or_404(Member, pk=pk)
-    cursus = get_object_or_404(Cursus, pk=cursus_pk)
-
     categories = cursus.categories.prefetch_related('skills')
-    member_skills = {
-        ms.skill_id: ms
-        for ms in MemberSkill.objects.filter(member=member, skill__category__cursus=cursus)
-    }
-    # Document remis à l'élève : les notes équipe n'y figurent pas.
+    member_skills = {}
     comments_by_skill = {}
-    for c in (
-        Comment.objects.visible_to_student().filter(member=member, skill__category__cursus=cursus)
-        .select_related('author')
-    ):
-        comments_by_skill.setdefault(c.skill_id, []).append(c)
+    if member is not None:
+        member_skills = {
+            ms.skill_id: ms
+            for ms in MemberSkill.objects.filter(member=member, skill__category__cursus=cursus)
+        }
+        # Document remis à l'élève : les notes équipe n'y figurent pas.
+        for c in (
+            Comment.objects.visible_to_student().filter(member=member, skill__category__cursus=cursus)
+            .select_related('author')
+        ):
+            comments_by_skill.setdefault(c.skill_id, []).append(c)
 
     styles = getSampleStyleSheet()
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=8, leading=10)
     small_grey = ParagraphStyle('small_grey', parent=small, textColor=colors.HexColor('#6b7280'))
     bold_cat = ParagraphStyle('bold_cat', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold')
-    header_style = ParagraphStyle('header', parent=styles['Normal'], fontSize=8, leading=10, fontName='Helvetica-Bold')
+    header_style = ParagraphStyle('header', parent=styles['Normal'], fontSize=8, leading=10, fontName='Helvetica-Bold',
+                                  textColor=colors.white)
+    header_center = ParagraphStyle('header_center', parent=header_style, alignment=1)
 
-    COL_WIDTHS = [8 * cm, 3 * cm, 7.5 * cm]
-
-    table_data = [[
-        Paragraph('Compétence', header_style),
-        Paragraph('Statut', header_style),
-        Paragraph('Commentaires', header_style),
-    ]]
+    if member is not None:
+        col_widths = [8 * cm, 3 * cm, 7.5 * cm]
+        header = [
+            Paragraph('Compétence', header_style),
+            Paragraph('Statut', header_style),
+            Paragraph('Commentaires', header_style),
+        ]
+    else:
+        # Une colonne à cocher par statut.
+        col_widths = [7 * cm, 1.8 * cm, 1.8 * cm, 1.8 * cm, 6.1 * cm]
+        header = [
+            Paragraph('Compétence', header_style),
+            *(Paragraph(label, header_center) for label in ('Non acquis', 'En cours', 'Acquis')),
+            Paragraph('Commentaires', header_style),
+        ]
+    n_cols = len(col_widths)
+    table_data = [header]
 
     row_styles = []
     current_row = 1
 
     for category in categories:
-        table_data.append([
-            Paragraph(escape(category.name), bold_cat),
-            '', '',
-        ])
+        table_data.append([Paragraph(escape(category.name), bold_cat)] + [''] * (n_cols - 1))
         row_styles.append(('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#f3f4f6')))
         row_styles.append(('SPAN', (0, current_row), (-1, current_row)))
         current_row += 1
 
         for skill in category.skills.all():
+            if member is None:
+                table_data.append([Paragraph(escape(skill.name), small)] + [''] * (n_cols - 1))
+                # Hauteur suffisante pour écrire à la main.
+                row_styles.append(('BOTTOMPADDING', (0, current_row), (-1, current_row), 14))
+                current_row += 1
+                continue
             ms = member_skills.get(skill.pk)
             status_label = (ms.get_status_display() if ms
                             else MemberSkill.SkillStatus.NOT_ACQUIRED.label)
@@ -691,7 +715,7 @@ def evaluation_export(request, pk, cursus_pk):
             ])
             current_row += 1
 
-    table = Table(table_data, colWidths=COL_WIDTHS, repeatRows=1)
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND',   (0, 0), (-1, 0),  colors.HexColor('#1a1a2e')),
         ('TEXTCOLOR',    (0, 0), (-1, 0),  colors.white),
@@ -712,21 +736,48 @@ def evaluation_export(request, pk, cursus_pk):
     )
 
     title_style = ParagraphStyle('title', parent=styles['Heading1'], fontSize=14, spaceAfter=12)
+    info_style = ParagraphStyle('info', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=12)
 
-    story = [
-        Paragraph(escape(cursus.name), title_style),
-        table,
-    ]
+    story = [Paragraph(escape(cursus.name), title_style)]
+    if subtitle:
+        story.append(Paragraph(escape(subtitle), info_style))
+    if member is None:
+        story.append(Paragraph(
+            'Élève : ' + '_' * 45 + '&nbsp;&nbsp;&nbsp;Date : ' + '_' * 20, info_style,
+        ))
+    story.append(table)
     doc.build(story)
-
     buf.seek(0)
-    raw_name = f"evaluation_{member.last_name}_{member.first_name}_{cursus.name}.pdf"
-    safe_ascii = raw_name.replace('"', '').replace('\n', '').replace('\r', '')
-    response = HttpResponse(buf, content_type='application/pdf')
-    response['Content-Disposition'] = (
-        f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(raw_name)}"
-    )
-    return response
+    return buf
+
+
+@club_staff_required
+def evaluation_export(request, pk, cursus_pk):
+    member = get_object_or_404(Member, pk=pk)
+    cursus = get_object_or_404(Cursus, pk=cursus_pk)
+    buf = _build_evaluation_pdf(cursus, member=member)
+    return _pdf_response(buf, f"evaluation_{member.last_name}_{member.first_name}_{cursus.name}.pdf")
+
+
+@club_staff_required
+def cursus_blank_export(request, pk):
+    """Fiche d'évaluation vierge d'un cursus (PDF à imprimer)."""
+    cursus = get_object_or_404(Cursus, pk=pk)
+    buf = _build_evaluation_pdf(cursus)
+    return _pdf_response(buf, f"fiche_vierge_{cursus.name}.pdf")
+
+
+@club_staff_required
+def formation_blank_export(request, pk):
+    """Fiche d'évaluation vierge du cursus d'une formation, avec le nom et les dates de la formation."""
+    formation = get_object_or_404(Formation.objects.select_related('cursus'), pk=pk)
+    subtitle = f"Formation : {formation.name}"
+    if formation.start_date:
+        subtitle += f" · du {date_format(formation.start_date, 'd/m/Y')}"
+    if formation.end_date:
+        subtitle += f" au {date_format(formation.end_date, 'd/m/Y')}"
+    buf = _build_evaluation_pdf(formation.cursus, subtitle=subtitle)
+    return _pdf_response(buf, f"fiche_vierge_{formation.name}.pdf")
 
 
 @club_staff_required

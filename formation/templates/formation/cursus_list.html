@@ -31,6 +31,8 @@
          style="font-size:0.85rem; padding:0.25rem 0.75rem;">Modifier</a>
       <a href="{% url 'saison-cursus-export' cursus.pk %}" class="btn btn-secondary"
          style="font-size:0.85rem; padding:0.25rem 0.75rem;" title="Télécharger le cursus au format JSON (réimportable)">Exporter (JSON)</a>
+      <a href="{% url 'saison-cursus-fiche-vierge' cursus.pk %}" class="btn btn-secondary"
+         style="font-size:0.85rem; padding:0.25rem 0.75rem;" title="Fiche d'évaluation vierge à imprimer">Fiche vierge (PDF)</a>
       <form method="post" action="{% url 'saison-cursus-archiver' cursus.pk %}">
         {% csrf_token %}
         <button type="submit" class="btn btn-secondary"

@@ -12,6 +12,7 @@ urlpatterns = [
     path('cursus/importer/', views.cursus_import_json, name='saison-cursus-importer'),
     path('cursus/<int:pk>/', views.cursus_detail, name='saison-cursus-detail'),
     path('cursus/<int:pk>/export.json', views.cursus_export_json, name='saison-cursus-export'),
+    path('cursus/<int:pk>/fiche-vierge/', views.cursus_blank_export, name='saison-cursus-fiche-vierge'),
     path('cursus/<int:pk>/archiver/', views.cursus_archive, name='saison-cursus-archiver'),
     path('cursus/<int:pk>/supprimer/', views.cursus_delete, name='saison-cursus-supprimer'),
 ]
@@ -21,6 +22,7 @@ formation_urlpatterns = [
     path('', views.formation_list, name='formation-list'),
     path('creer/', views.formation_create, name='formation-create'),
     path('<int:pk>/', views.formation_detail, name='formation-detail'),
+    path('<int:pk>/fiche-vierge/', views.formation_blank_export, name='formation-fiche-vierge'),
 ]
 
 # Élèves : /eleves/

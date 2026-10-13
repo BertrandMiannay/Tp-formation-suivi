@@ -127,6 +127,10 @@
       <a href="{% url 'saison-cursus-export' cursus.pk %}" class="btn btn-secondary" style="font-size:0.85rem; padding:0.25rem 0.75rem;">
         Télécharger (.json)
       </a>
+      <a href="{% url 'saison-cursus-fiche-vierge' cursus.pk %}" class="btn btn-secondary" style="font-size:0.85rem; padding:0.25rem 0.75rem;"
+         title="Fiche d'évaluation vierge à imprimer">
+        Fiche vierge (.pdf)
+      </a>
     </div>
   </div>
   <pre id="cursus-json-output" style="background:#f8f9fa; border:1px solid #e5e7eb; border-radius:4px;

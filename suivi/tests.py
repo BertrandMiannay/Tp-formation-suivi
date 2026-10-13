@@ -266,6 +266,15 @@ class SuiviTestCase(SuiviFixtures):
         resp = self.client.get(reverse('eleve-evaluation-export', args=[self.alice.pk, self.cursus.pk]))
         self.assertEqual(resp['Content-Type'], 'application/pdf')
 
+    def test_blank_evaluation_export(self):
+        for name, pk in [('saison-cursus-fiche-vierge', self.cursus.pk), ('formation-fiche-vierge', self.formation.pk)]:
+            resp = self.client.get(reverse(name, args=[pk]))
+            self.assertEqual(resp.status_code, 200, name)
+            self.assertEqual(resp['Content-Type'], 'application/pdf')
+            self.assertIn('fiche_vierge_', resp['Content-Disposition'])
+        resp = self.client.get(reverse('formation-detail', args=[self.formation.pk]))
+        self.assertContains(resp, reverse('formation-fiche-vierge', args=[self.formation.pk]))
+
     def test_create_student_creates_invited_account(self):
         resp = self.client.post(reverse('eleve-create'), {
             'first_name': 'Eve', 'last_name': 'Nouvelle', 'email': 'Eve@Example.com',
@@ -454,6 +463,7 @@ class SuiviTestCase(SuiviFixtures):
             ('formation-list', []), ('formation-create', []), ('formation-detail', [self.formation.pk]),
             ('eleve-evaluation-save', [self.alice.pk, self.cursus.pk]),
             ('eleve-evaluation-export', [self.alice.pk, self.cursus.pk]),
+            ('saison-cursus-fiche-vierge', [self.cursus.pk]), ('formation-fiche-vierge', [self.formation.pk]),
         ]:
             for method in (self.client.get, self.client.post):
                 resp = method(reverse(name, args=args))
