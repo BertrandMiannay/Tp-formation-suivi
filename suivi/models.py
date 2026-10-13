@@ -49,9 +49,6 @@ class Attendance(models.Model):
     session = models.ForeignKey(TrainingSession, on_delete=models.CASCADE, related_name='attendances')
     member  = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='attendances')
     status  = models.CharField(max_length=20, choices=Status.choices)
-    comment = models.CharField(max_length=255, blank=True)
-    staff_comment = models.CharField('Note équipe', max_length=255, blank=True,
-                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
 
     class Meta:
         verbose_name        = 'Présence'
@@ -72,9 +69,6 @@ class WorkedSkill(models.Model):
     skill   = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='worked_skills')
     status  = models.CharField(max_length=20, choices=MemberSkill.SkillStatus.choices, blank=True,
                                help_text="Évaluation lors de la séance (vide = travaillée sans évaluation)")
-    comment = models.CharField(max_length=255, blank=True)
-    staff_comment = models.CharField('Note équipe', max_length=255, blank=True,
-                                     help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
     author  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                 related_name='+', verbose_name='Saisi par')
 
@@ -89,21 +83,33 @@ class WorkedSkill(models.Model):
         return f"{self.member} — {self.skill} ({self.session.date:%d/%m/%Y})"
 
 
-class StudentNote(models.Model):
-    """Note sur un élève : partie visible par l'élève et/ou note réservée à l'équipe."""
+class CommentQuerySet(models.QuerySet):
+    def visible_to_student(self):
+        return self.filter(staff_only=False)
 
-    member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='student_notes')
-    session    = models.ForeignKey(TrainingSession, null=True, blank=True, on_delete=models.SET_NULL, related_name='student_notes')
+
+class Comment(models.Model):
+    """Commentaire sur un élève, rattaché ou non à une séance et / ou à une compétence.
+    `staff_only` : note réservée à l'équipe encadrante, jamais affichée à l'élève."""
+
+    member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='comments', verbose_name='Élève')
+    session    = models.ForeignKey(TrainingSession, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='comments', verbose_name='Séance')
+    skill      = models.ForeignKey(Skill, null=True, blank=True, on_delete=models.CASCADE,
+                                   related_name='comments', verbose_name='Compétence')
     date       = models.DateField()
-    content    = models.TextField('Note', blank=True, help_text="Visible par l'élève dans « Mon suivi ».")
-    staff_content = models.TextField('Note équipe', blank=True,
+    content    = models.TextField('Commentaire')
+    staff_only = models.BooleanField('Note équipe', default=False,
                                      help_text="Réservée à l'équipe encadrante : jamais affichée à l'élève.")
-    author     = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    author     = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+', verbose_name='Auteur')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = CommentQuerySet.as_manager()
+
     class Meta:
-        verbose_name        = 'Note élève'
-        verbose_name_plural = 'Notes élèves'
+        verbose_name        = 'Commentaire'
+        verbose_name_plural = 'Commentaires'
         ordering            = ['-date', '-pk']
 
     def __str__(self):

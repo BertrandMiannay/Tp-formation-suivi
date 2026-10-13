@@ -1,0 +1,27 @@
+{% comment %}
+Un commentaire (suivi.Comment). Paramètres : c ; show_links (affiche la séance et la compétence) ;
+manage (boutons « rendre visible / privé » et suppression, équipe encadrante) avec next (URL de retour)
+et in_form (boutons placés dans un formulaire englobant : `formaction` au lieu d'un formulaire imbriqué).
+{% endcomment %}
+<div class="comment-item{% if c.staff_only %} staff-note{% endif %}">
+    <span class="comment-meta">{{ c.date|date:"d/m/Y" }}{% if c.author %} · {{ c.author.get_full_name|default:c.author.username }}{% endif %}{% if show_links %}{% if c.session %} · {% if manage %}<a href="{% url 'suivi-session-detail' c.session.pk %}">séance{% if c.session.title %} « {{ c.session.title }} »{% endif %}</a>{% else %}séance{% if c.session.title %} « {{ c.session.title }} »{% endif %}{% endif %}{% endif %}{% if c.skill %} · <em>{{ c.skill.name }}</em>{% endif %}{% endif %}</span>
+    <span class="comment-text">{% if c.staff_only %}<span class="private-mark" title="Note réservée à l'équipe encadrante">🔒</span> {% endif %}{{ c.content }}</span>
+    {% if manage %}
+    {% if in_form %}
+    <span class="comment-actions">
+        <button type="submit" class="comment-btn" formaction="{% url 'suivi-comment' c.pk %}?next={{ next|urlencode }}" formnovalidate name="comment_action" value="toggle"
+                title="{% if c.staff_only %}Rendre visible par l'élève{% else %}Réserver à l'équipe{% endif %}">{% if c.staff_only %}👁{% else %}🔒{% endif %}</button>
+        <button type="submit" class="comment-btn comment-del" formaction="{% url 'suivi-comment' c.pk %}?next={{ next|urlencode }}" formnovalidate name="comment_action" value="delete"
+                title="Supprimer" onclick="return confirm('Supprimer ce commentaire ?');">✕</button>
+    </span>
+    {% else %}
+    <form method="post" action="{% url 'suivi-comment' c.pk %}?next={{ next|urlencode }}" class="comment-actions">
+        {% csrf_token %}
+        <button type="submit" class="comment-btn" name="comment_action" value="toggle"
+                title="{% if c.staff_only %}Rendre visible par l'élève{% else %}Réserver à l'équipe{% endif %}">{% if c.staff_only %}👁{% else %}🔒{% endif %}</button>
+        <button type="submit" class="comment-btn comment-del" name="comment_action" value="delete"
+                title="Supprimer" onclick="return confirm('Supprimer ce commentaire ?');">✕</button>
+    </form>
+    {% endif %}
+    {% endif %}
+</div>

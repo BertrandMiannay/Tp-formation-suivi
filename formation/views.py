@@ -20,7 +20,8 @@ from formation.forms import FormationForm, QuickStudentForm, StudentForm, Studen
 from formation.models import (
     Season, Cursus, CursusCategory, Skill, Member, MemberSkill, SkillEvaluation, Formation, Enrollment,
 )
-from suivi.models import TrainingSession
+from suivi.forms import add_comments
+from suivi.models import Comment, TrainingSession
 from suivi.views import attendance_matrix
 from userManagement.views import (
     admin_required, can_manage_account, club_staff_required, create_invited_user, renew_invitation,
@@ -175,17 +176,21 @@ def evaluation(request, pk):
         ms.skill_id: ms.status
         for ms in MemberSkill.objects.filter(member=member, skill_id__in=skill_ids)
     }
+    # Historique par compétence : évaluations et commentaires (avec ou sans séance), plus récents d'abord.
     evaluations_map = {}
-    for ev in SkillEvaluation.objects.filter(member=member, skill_id__in=skill_ids).select_related('author').order_by('-date', '-pk'):
+    for ev in SkillEvaluation.objects.filter(member=member, skill_id__in=skill_ids).select_related('author'):
         evaluations_map.setdefault(ev.skill_id, []).append({
+            'kind': 'evaluation',
             'pk': ev.pk,
             'author': (ev.author.get_full_name() or ev.author.username) if ev.author else '',
             'date': ev.date,
             'status': ev.status,
             'status_display': ev.get_status_display(),
-            'comment': ev.comment,
-            'staff_comment': ev.staff_comment,
         })
+    for c in Comment.objects.filter(member=member, skill_id__in=skill_ids).select_related('session', 'author'):
+        evaluations_map.setdefault(c.skill_id, []).append({'kind': 'comment', 'pk': c.pk, 'date': c.date, 'comment': c})
+    for history in evaluations_map.values():
+        history.sort(key=lambda e: (e['date'], e['kind'] == 'comment', e['pk']), reverse=True)
     formations = []
     for cursus in formations_qs:
         categories = []
@@ -601,18 +606,19 @@ def evaluation_save(request, pk, cursus_pk):
         status = request.POST.get(f'skill_{skill.pk}_status', MemberSkill.SkillStatus.NOT_ACQUIRED)
         if status not in valid_statuses:
             status = MemberSkill.SkillStatus.NOT_ACQUIRED
-        comment = request.POST.get(f'skill_{skill.pk}_comment', '').strip()
-        staff_comment = request.POST.get(f'skill_{skill.pk}_staff_comment', '').strip()
         MemberSkill.objects.update_or_create(
             member=member, skill=skill,
             defaults={'status': status},
         )
-        if comment or staff_comment or status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
+        if status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
             SkillEvaluation.objects.create(
-                member=member, skill=skill,
-                date=today, status=status, comment=comment, staff_comment=staff_comment,
-                author=request.user,
+                member=member, skill=skill, date=today, status=status, author=request.user,
             )
+        add_comments(
+            member=member, skill=skill, date=today, author=request.user,
+            content=request.POST.get(f'skill_{skill.pk}_comment', ''),
+            staff_content=request.POST.get(f'skill_{skill.pk}_staff_comment', ''),
+        )
     return redirect('eleve-evaluation', pk=pk)
 
 
@@ -632,9 +638,13 @@ def evaluation_export(request, pk, cursus_pk):
         ms.skill_id: ms
         for ms in MemberSkill.objects.filter(member=member, skill__category__cursus=cursus)
     }
-    evaluations_by_skill = {}
-    for ev in SkillEvaluation.objects.filter(member=member, skill__category__cursus=cursus).select_related('author').order_by('-date'):
-        evaluations_by_skill.setdefault(ev.skill_id, []).append(ev)
+    # Document remis à l'élève : les notes équipe n'y figurent pas.
+    comments_by_skill = {}
+    for c in (
+        Comment.objects.visible_to_student().filter(member=member, skill__category__cursus=cursus)
+        .select_related('author')
+    ):
+        comments_by_skill.setdefault(c.skill_id, []).append(c)
 
     styles = getSampleStyleSheet()
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=8, leading=10)
@@ -666,16 +676,12 @@ def evaluation_export(request, pk, cursus_pk):
             ms = member_skills.get(skill.pk)
             status_label = (ms.get_status_display() if ms
                             else MemberSkill.SkillStatus.NOT_ACQUIRED.label)
-            evs = evaluations_by_skill.get(skill.pk, [])
-
             comment_lines = []
-            for ev in evs:
-                date_str = date_format(ev.date, 'd/m/Y')
-                if ev.author:
-                    date_str += f" · {escape(ev.author.get_full_name() or ev.author.username)}"
-                line = f"<font color='#9ca3af'>{date_str}</font>"
-                # Document remis à l'élève : les notes équipe n'y figurent pas.
-                comment_lines.append(f"{line} {escape(ev.comment)}" if ev.comment else line)
+            for c in comments_by_skill.get(skill.pk, []):
+                date_str = date_format(c.date, 'd/m/Y')
+                if c.author:
+                    date_str += f" · {escape(c.author.get_full_name() or c.author.username)}"
+                comment_lines.append(f"<font color='#9ca3af'>{date_str}</font> {escape(c.content)}")
             comment_para = Paragraph('<br/>'.join(comment_lines), small_grey) if comment_lines else ''
 
             table_data.append([

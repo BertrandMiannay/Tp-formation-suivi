@@ -8,12 +8,13 @@ from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from formation.models import Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation
 from formation.forms import QuickStudentForm
 from userManagement.views import can_reset_password, club_staff_required, invite_url_for
-from .forms import StudentNoteForm, TrainingSessionForm
-from .models import Attendance, StudentNote, TrainingSession, WorkedSkill
+from .forms import CommentForm, TrainingSessionForm, add_comments
+from .models import Attendance, Comment, TrainingSession, WorkedSkill
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,17 @@ def _attendance_stats(attendances):
     return stats
 
 
-def _skills_progress(member):
+def _member_comments(member, for_student=False):
+    comments = Comment.objects.filter(member=member)
+    return comments.visible_to_student() if for_student else comments
+
+
+def _skills_progress(member, for_student=False):
     """Structure formation → catégories → compétences du cursus, avec statut, nb de séances où
-    l'élève a travaillé la compétence, dernière évaluation et commentaires de séance (plus récents
-    d'abord). Le statut d'une compétence est propre
-    à l'élève : un cursus suivi dans plusieurs formations n'est affiché qu'une fois (la plus récente)."""
+    l'élève a travaillé la compétence, dernière évaluation et commentaires sur la compétence (avec ou
+    sans séance, plus récents d'abord ; `for_student` : sans les notes équipe). Le statut d'une
+    compétence est propre à l'élève : un cursus suivi dans plusieurs formations n'est affiché
+    qu'une fois (la plus récente)."""
     by_cursus = {}
     for enrollment in (
         member.enrollments.select_related('formation__cursus')
@@ -78,13 +85,9 @@ def _skills_progress(member):
             .values('skill_id').annotate(n=Count('session_id', distinct=True))
         )
     }
-    session_comments = {}
-    for ws in (
-        WorkedSkill.objects.filter(member=member, skill_id__in=skill_ids)
-        .exclude(comment='', staff_comment='')
-        .select_related('session', 'author').order_by('-session__date', '-session__pk')
-    ):
-        session_comments.setdefault(ws.skill_id, []).append(ws)
+    skill_comments = {}
+    for c in _member_comments(member, for_student).filter(skill_id__in=skill_ids).select_related('session', 'author'):
+        skill_comments.setdefault(c.skill_id, []).append(c)
     last_eval = {}
     for ev in SkillEvaluation.objects.filter(member=member, skill_id__in=skill_ids).select_related('author').order_by('-date', '-pk'):
         last_eval.setdefault(ev.skill_id, ev)
@@ -110,7 +113,7 @@ def _skills_progress(member):
                     'status_display': MemberSkill.SkillStatus(status).label,
                     'worked': worked,
                     'last_eval': last_eval.get(s.pk),
-                    'session_comments': session_comments.get(s.pk, []),
+                    'comments': skill_comments.get(s.pk, []),
                 })
             categories.append({'name': category.name, 'skills': skills})
         counts['acquired_pct'] = round(100 * counts['acquired'] / counts['total']) if counts['total'] else 0
@@ -146,9 +149,10 @@ def _candidate_skills(session_ids, member):
     return _skills_of_cursus(_candidate_cursus_ids(member.cursus_ids(), session_ids))
 
 
-def _skill_tree(skills, worked, global_status):
+def _skill_tree(skills, worked, global_status, comments):
     """Regroupe les compétences par cursus puis catégorie, avec l'état travaillé / évalué
-    pour la séance et le statut global de l'élève (`global_status` : skill_id → statut)."""
+    pour la séance, ses commentaires de séance (`comments` : skill_id → liste) et le statut global
+    de l'élève (`global_status` : skill_id → statut)."""
     tree = []
     for skill in skills:
         cursus, category = skill.category.cursus, skill.category
@@ -164,8 +168,7 @@ def _skill_tree(skills, worked, global_status):
             'name': skill.name,
             'worked': ws is not None,
             'session_status': ws.status if ws else '',
-            'comment': ws.comment if ws else '',
-            'staff_comment': ws.staff_comment if ws else '',
+            'comments': comments.get(skill.pk, []),
             'author': ws.author if ws else None,
             'global_status': status,
             'global_status_display': MemberSkill.SkillStatus(status).label,
@@ -173,15 +176,22 @@ def _skill_tree(skills, worked, global_status):
     return tree
 
 
-def _attach_worked_skills(member, attendances):
-    """Ajoute à chaque présence la liste des compétences travaillées par l'élève ce jour-là."""
+def _attach_worked_skills(member, attendances, for_student=False):
+    """Ajoute à chaque présence ses commentaires de séance hors compétence (`comments`) et la liste
+    des compétences travaillées par l'élève ce jour-là (`worked`, chacune avec ses `comments`)."""
+    session_ids = [a.session_id for a in attendances]
+    comments = {}
+    for c in _member_comments(member, for_student).filter(session_id__in=session_ids).select_related('author'):
+        comments.setdefault((c.session_id, c.skill_id), []).append(c)
     by_session = {}
     for ws in (
-        WorkedSkill.objects.filter(member=member, session_id__in=[a.session_id for a in attendances])
+        WorkedSkill.objects.filter(member=member, session_id__in=session_ids)
         .select_related('skill').order_by('skill__category__order', 'skill__order')
     ):
+        ws.comments = comments.get((ws.session_id, ws.skill_id), [])
         by_session.setdefault(ws.session_id, []).append(ws)
     for a in attendances:
+        a.comments = comments.get((a.session_id, None), [])
         a.worked = by_session.get(a.session_id, [])
     return attendances
 
@@ -189,25 +199,14 @@ def _attach_worked_skills(member, attendances):
 def _tracking_sheet(member, season, for_student=False):
     """Partie commune de la fiche élève (staff) et de « Mon suivi » : présences de la saison avec
     les compétences travaillées, statistiques et progression par cursus.
-    `for_student` : les notes équipe sont effacées (objets non enregistrés)."""
+    `for_student` : les notes équipe sont écartées."""
     attendances = member.attendances.select_related('session')
     if season:
         attendances = attendances.filter(session__season=season)
-    attendances = _attach_worked_skills(member, list(attendances.order_by('-session__date', '-session__pk')))
-    formations = _skills_progress(member)
-    if for_student:
-        for a in attendances:
-            a.staff_comment = ''
-            for ws in a.worked:
-                ws.staff_comment = ''
-        for f in formations:
-            for cat in f['categories']:
-                for s in cat['skills']:
-                    if s['last_eval']:
-                        s['last_eval'].staff_comment = ''
-                    s['session_comments'] = [ws for ws in s['session_comments'] if ws.comment]
-                    for ws in s['session_comments']:
-                        ws.staff_comment = ''
+    attendances = _attach_worked_skills(
+        member, list(attendances.order_by('-session__date', '-session__pk')), for_student,
+    )
+    formations = _skills_progress(member, for_student)
     return {
         'attendances': attendances,
         'stats': _attendance_stats(attendances),
@@ -283,15 +282,17 @@ def session_detail(request, pk):
             with transaction.atomic():
                 for member in session.roster():
                     status = request.POST.get(f'att_{member.pk}', '')
-                    comment = request.POST.get(f'att_{member.pk}_comment', '').strip()[:255]
-                    staff_comment = request.POST.get(f'att_{member.pk}_staff_comment', '').strip()[:255]
                     if status in valid:
                         Attendance.objects.update_or_create(
-                            session=session, member=member,
-                            defaults={'status': status, 'comment': comment, 'staff_comment': staff_comment},
+                            session=session, member=member, defaults={'status': status},
                         )
                     else:
                         Attendance.objects.filter(session=session, member=member).delete()
+                    add_comments(
+                        member=member, session=session, date=session.date, author=request.user,
+                        content=request.POST.get(f'att_{member.pk}_comment', ''),
+                        staff_content=request.POST.get(f'att_{member.pk}_staff_comment', ''),
+                    )
             messages.success(request, "Présences enregistrées.")
             return redirect(reverse('suivi-session-detail', args=[pk]) + '#presences')
 
@@ -332,31 +333,30 @@ def session_detail(request, pk):
                     status = request.POST.get(f'{prefix}_status', '')
                     if status not in valid:
                         status = ''
-                    comment = request.POST.get(f'{prefix}_comment', '').strip()[:255]
-                    staff_comment = request.POST.get(f'{prefix}_staff_comment', '').strip()[:255]
-                    worked = bool(request.POST.get(prefix)) or bool(status)
+                    # Un commentaire saisi sur une compétence la marque comme travaillée.
+                    commented = add_comments(
+                        member=member, session=session, skill=skill, date=session.date, author=request.user,
+                        content=request.POST.get(f'{prefix}_comment', ''),
+                        staff_content=request.POST.get(f'{prefix}_staff_comment', ''),
+                    )
+                    worked = bool(request.POST.get(prefix)) or bool(status) or bool(commented)
                     if not worked:
                         if skill.pk in existing:
                             existing[skill.pk].delete()
                         continue
                     ws = existing.get(skill.pk)
-                    if ws and (ws.status, ws.comment, ws.staff_comment) == (status, comment, staff_comment):
+                    if ws and ws.status == status:
                         continue
                     WorkedSkill.objects.update_or_create(
                         session=session, member=member, skill=skill,
-                        defaults={'status': status, 'comment': comment, 'staff_comment': staff_comment,
-                                  'author': request.user},
+                        defaults={'status': status, 'author': request.user},
                     )
-                    old = current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED)
-                    if status and (status != old or comment or staff_comment):
+                    if status and status != current.get(skill.pk, MemberSkill.SkillStatus.NOT_ACQUIRED):
                         MemberSkill.objects.update_or_create(
                             member=member, skill=skill, defaults={'status': status},
                         )
                         SkillEvaluation.objects.create(
-                            member=member, skill=skill, date=session.date, status=status,
-                            comment=comment or f"Séance du {session.date:%d/%m/%Y}",
-                            staff_comment=staff_comment,
-                            author=request.user,
+                            member=member, skill=skill, date=session.date, status=status, author=request.user,
                         )
                         evaluated += 1
             messages.success(
@@ -366,21 +366,15 @@ def session_detail(request, pk):
             )
             return redirect(reverse('suivi-session-detail', args=[pk]) + f'#eleve-{member.pk}')
 
-        elif action == 'note':
-            member = get_object_or_404(Member, pk=request.POST.get('member_id'))
-            content = request.POST.get('content', '').strip()
-            staff_content = request.POST.get('staff_content', '').strip()
-            if content or staff_content:
-                StudentNote.objects.create(
-                    member=member, session=session, date=session.date,
-                    content=content, staff_content=staff_content, author=request.user,
-                )
-                messages.success(request, f"Note ajoutée pour {member.first_name} {member.last_name}.")
-            return redirect(reverse('suivi-session-detail', args=[pk]) + '#notes')
-
     roster = list(session.roster())
     attendance_map = {a.member_id: a for a in session.attendances.all()}
-    roster_rows = [{'member': m, 'attendance': attendance_map.get(m.pk)} for m in roster]
+    comments = {}
+    for c in session.comments.select_related('author'):
+        comments.setdefault((c.member_id, c.skill_id), []).append(c)
+    roster_rows = [
+        {'member': m, 'attendance': attendance_map.get(m.pk), 'comments': comments.get((m.pk, None), [])}
+        for m in roster
+    ]
     stats = _attendance_stats(attendance_map.values())
 
     session_formations = list(session.formations.all())
@@ -414,10 +408,13 @@ def session_detail(request, pk):
         skills = [s for s in all_skills if s.category.cursus_id in candidate_cursus[m.pk]]
         skill_rows.append({
             'member': m,
+            'next': reverse('suivi-session-detail', args=[pk]) + f'#eleve-{m.pk}',
             'present': is_present,
             'worked_count': len(worked),
             'acquired_count': sum(1 for ws in worked.values() if ws.status == MemberSkill.SkillStatus.ACQUIRED),
-            'cursus': _skill_tree(skills, worked, global_status.get(m.pk, {})),
+            'cursus': _skill_tree(skills, worked, global_status.get(m.pk, {}), {
+                skill_id: c for (member_id, skill_id), c in comments.items() if member_id == m.pk
+            }),
         })
 
     roster_ids = [m.pk for m in roster]
@@ -431,7 +428,6 @@ def session_detail(request, pk):
         'attendance_choices': Attendance.Status.choices,
         'skill_rows': skill_rows,
         'status_choices': MemberSkill.SkillStatus.choices,
-        'session_notes': session.student_notes.select_related('member', 'author'),
         'addable_members': addable_members,
         'session_formations': session_formations,
         'active_tab': 'seances',
@@ -453,15 +449,21 @@ def session_delete(request, pk):
 # ---------------------------------------------------------------------------
 
 def attendance_matrix(sessions, students):
-    """Tableau des présences : une ligne par élève, une cellule {session, att (Attendance ou None)}
-    par séance."""
+    """Tableau des présences : une ligne par élève, une cellule {session, att (Attendance ou None),
+    comments (commentaires de séance hors compétence)} par séance."""
     att_map = {
         (a.member_id, a.session_id): a
         for a in Attendance.objects.filter(session__in=sessions, member__in=students)
     }
+    comments = {}
+    for c in Comment.objects.filter(session__in=sessions, member__in=students, skill=None).order_by('pk'):
+        comments.setdefault((c.member_id, c.session_id), []).append(c)
     rows = []
     for m in students:
-        cells = [{'session': s, 'att': att_map.get((m.pk, s.pk))} for s in sessions]
+        cells = [
+            {'session': s, 'att': att_map.get((m.pk, s.pk)), 'comments': comments.get((m.pk, s.pk), [])}
+            for s in sessions
+        ]
         rows.append({'member': m, 'cells': cells, 'stats': _attendance_stats([c['att'] for c in cells if c['att']])})
     return rows
 
@@ -528,26 +530,19 @@ def student_list(request):
 @club_staff_required
 def student_detail(request, pk):
     member = get_object_or_404(Member.objects.select_related('user'), pk=pk)
-    note_form = StudentNoteForm(member=member, initial={'date': timezone.localdate()})
+    comment_form = CommentForm(member=member, initial={'date': timezone.localdate()})
     open_form = None
 
     if request.method == 'POST':
         action = request.POST.get('_action')
 
-        if action == 'add_note':
-            note_form = StudentNoteForm(request.POST, member=member)
-            if note_form.is_valid():
-                note = note_form.save(commit=False)
-                note.member = member
-                note.author = request.user
-                note.save()
-                messages.success(request, "Note ajoutée.")
-                return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
-            open_form = 'note'
-
-        elif action == 'delete_note':
-            StudentNote.objects.filter(pk=request.POST.get('note_pk'), member=member).delete()
-            return redirect(reverse('suivi-student-detail', args=[pk]) + '#notes')
+        if action == 'add_comment':
+            comment_form = CommentForm(request.POST, member=member)
+            if comment_form.is_valid():
+                comment_form.save(author=request.user)
+                messages.success(request, "Commentaire ajouté.")
+                return redirect(reverse('suivi-student-detail', args=[pk]) + '#commentaires')
+            open_form = 'comment'
 
         elif action == 'enroll':
             formation = get_object_or_404(Formation, pk=request.POST.get('formation_id'))
@@ -563,8 +558,8 @@ def student_detail(request, pk):
                                  .exclude(enrollments__member=member).order_by('name'),
         **sheet,
         'last_present': next((a.session.date for a in sheet['attendances'] if a.status == Attendance.Status.PRESENT), None),
-        'notes': member.student_notes.select_related('session', 'author'),
-        'note_form': note_form,
+        'comments': member.comments.select_related('session', 'skill', 'author'),
+        'comment_form': comment_form,
         'open_form': open_form,
         'invite_url': invite_url_for(request, member.user) if member.user_id and not member.user.is_active else None,
         'can_reset_password': member.user_id is not None and can_reset_password(request.user, member.user),
@@ -587,11 +582,32 @@ def my_tracking(request):
         sheets.append({
             'member': member,
             **_tracking_sheet(member, season, for_student=True),
-            # Seule la partie visible des notes est transmise à l'élève.
-            'notes': member.student_notes.exclude(content='').select_related('session', 'author')
-                     .defer('staff_content'),
+            # Les notes équipe ne sont jamais transmises à l'élève.
+            'comments': member.comments.visible_to_student().select_related('session', 'skill', 'author'),
         })
     return render(request, 'suivi/my_tracking.html', {
         'sheets': sheets,
         'season': season,
     })
+
+
+# ---------------------------------------------------------------------------
+# Commentaires
+# ---------------------------------------------------------------------------
+
+@club_staff_required
+def comment_action(request, pk):
+    """Suppression d'un commentaire, ou bascule visible par l'élève ↔ note équipe. Retour vers `next`."""
+    comment = get_object_or_404(Comment, pk=pk)
+    next_url = request.GET.get('next', '')
+    if not url_has_allowed_host_and_scheme(next_url, {request.get_host()}, request.is_secure()):
+        next_url = reverse('suivi-student-detail', args=[comment.member_id]) + '#commentaires'
+    if request.method == 'POST':
+        # Boutons éventuellement placés dans un autre formulaire : nom distinct de `_action`.
+        action = request.POST.get('comment_action')
+        if action == 'delete':
+            comment.delete()
+        elif action == 'toggle':
+            comment.staff_only = not comment.staff_only
+            comment.save(update_fields=['staff_only'])
+    return redirect(next_url)

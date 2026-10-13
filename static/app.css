@@ -119,6 +119,16 @@ input:focus, select:focus { outline: none; border-color: #1a1a2e; }
 .sp-comments summary { cursor:pointer; color:#4b5563; }
 .sp-comments ul { list-style:none; margin:0.35rem 0 0; padding:0 0 0 0.75rem; border-left:2px solid #e5e7eb; }
 .sp-comments li { margin-bottom:0.35rem; }
+.comment-item { display:flex; flex-wrap:wrap; align-items:baseline; gap:0.1rem 0.5rem; font-size:0.85rem; padding:0.15rem 0; }
+.comment-item.staff-note { font-size:0.85rem; }
+.comment-meta { color:#6b7280; font-size:0.75rem; white-space:nowrap; }
+.comment-meta a { color:inherit; }
+.comment-text { white-space:pre-line; flex:1 1 12rem; min-width:0; }
+.comment-actions { display:inline-flex; gap:0.25rem; margin:0; }
+.comment-btn { background:none; border:none; cursor:pointer; padding:0 0.15rem; font-size:0.8rem; line-height:1.2; opacity:0.6; }
+.comment-btn:hover { opacity:1; }
+.comment-del { color:#dc2626; }
+.comment-list { margin-bottom:0.25rem; }
 .badge-cursus { background:#e0e7ff; color:#3730a3; }
 .badge-enroll-active { background:#dbeafe; color:#1e40af; }
 .badge-enroll-completed { background:#dcfce7; color:#166534; }

@@ -19,7 +19,7 @@
     </div>
     <div class="actions" style="margin-bottom:1rem;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-card').style.display = document.getElementById('edit-card').style.display === 'none' ? '' : 'none'">Modifier</button>
-        <form method="post" action="{% url 'suivi-session-delete' session.pk %}" onsubmit="return confirm('Supprimer cette séance et toutes les présences associées ?');">
+        <form method="post" action="{% url 'suivi-session-delete' session.pk %}" onsubmit="return confirm('Supprimer cette séance et toutes les présences associées ? Les commentaires sont conservés (sans lien vers la séance).');">
             {% csrf_token %}
             <button type="submit" class="btn btn-danger">Supprimer</button>
         </form>
@@ -75,7 +75,10 @@
                         <label class="muted"><input type="radio" name="att_{{ row.member.pk }}" value="" {% if not row.attendance %}checked{% endif %}> <span class="hide-sm">Non renseigné</span><span class="show-sm">?</span></label>
                     </div>
                 </td>
-                <td>{% include "_comment_fields.html" with prefix="att" pk=row.member.pk comment=row.attendance.comment staff_comment=row.attendance.staff_comment placeholder="Retard, absence…" %}</td>
+                <td>
+                    {% if row.comments %}<div class="comment-list">{% for c in row.comments %}{% include "_comment.html" with manage=True in_form=True next=request.path|add:"#presences" %}{% endfor %}</div>{% endif %}
+                    {% include "_comment_fields.html" with prefix="att" pk=row.member.pk placeholder="Retard, absence, remarque…" %}
+                </td>
             </tr>
         {% endfor %}
         </tbody>
@@ -100,6 +103,7 @@
         <p class="muted" style="font-size:0.85rem; margin-bottom:0.75rem;">
             Cochez les compétences travaillées par chaque élève et, si besoin, l'évaluation du jour.
             Une évaluation met à jour le statut de la compétence de l'élève et est historisée à la date de la séance.
+            Un commentaire saisi sur une compétence la marque comme travaillée.
         </p>
         {% for row in skill_rows %}
         <details id="eleve-{{ row.member.pk }}" class="student-skills" style="margin-bottom:0.5rem; border:1px solid #e5e7eb; border-radius:6px; padding:0.5rem 0.75rem;">
@@ -142,7 +146,9 @@
                                         {% endfor %}
                                     </select>
                                 </td>
-                                <td class="ws-cell-comment">{% include "_comment_fields.html" with prefix="ws" pk=sk.pk comment=sk.comment staff_comment=sk.staff_comment %}{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
+                                <td class="ws-cell-comment">
+                                    {% if sk.comments %}<div class="comment-list">{% for c in sk.comments %}{% include "_comment.html" with manage=True in_form=True next=row.next %}{% endfor %}</div>{% endif %}
+                                    {% include "_comment_fields.html" with prefix="ws" pk=sk.pk %}{% if sk.author %}<div class="muted" style="font-size:0.75rem; margin-top:0.15rem;">saisi par {{ sk.author.get_full_name|default:sk.author.username }}</div>{% endif %}</td>
                             </tr>
                             {% endfor %}
                             </tbody>
@@ -158,38 +164,6 @@
         </details>
         {% endfor %}
     {% endif %}
-</div>
-
-{# ---------------- Notes ---------------- #}
-<div class="card" id="notes">
-    <h2>Notes de séance</h2>
-    {% if roster_rows %}
-    <form method="post" style="margin-bottom:1rem;">
-        {% csrf_token %}
-        <input type="hidden" name="_action" value="note">
-        <div class="grid-2">
-            <div class="form-group">
-                <label>Élève</label>
-                <select name="member_id">
-                    {% for row in roster_rows %}<option value="{{ row.member.pk }}">{{ row.member.last_name }} {{ row.member.first_name }}</option>{% endfor %}
-                </select>
-            </div>
-        </div>
-        <div class="form-group">{% include "_comment_fields.html" with name="content" staff_name="staff_content" rows=2 placeholder="Observation, conseil, point à retravailler…" %}</div>
-        <button type="submit" class="btn btn-primary">Ajouter la note</button>
-    </form>
-    {% endif %}
-    {% for note in session_notes %}
-        <div style="border-top:1px solid #eee; padding:0.5rem 0;">
-            <div style="font-size:0.85rem;">
-                <a href="{% url 'suivi-student-detail' note.member.pk %}#notes" style="color:#1a1a2e; font-weight:500;">{{ note.member.first_name }} {{ note.member.last_name }}</a>
-                <span class="muted">{{ note.author.get_full_name|default:note.author.username|default:"" }}</span>
-            </div>
-            {% include "suivi/_note_body.html" %}
-        </div>
-    {% empty %}
-        <p class="muted">Aucune note pour cette séance.</p>
-    {% endfor %}
 </div>
 
 <script>
