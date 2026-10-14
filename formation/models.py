@@ -2,8 +2,12 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from clubs.models import Club, get_default_club
+
 
 class Season(models.Model):
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, default=get_default_club, related_name='seasons',
+                             verbose_name='Club')
     label = models.CharField(max_length=20)
     current = models.BooleanField(default=False)
 
@@ -20,6 +24,8 @@ class Cursus(models.Model):
         ACTIVE   = 'active',   'Actif'
         ARCHIVED = 'archived', 'Archivé'
 
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, default=get_default_club, related_name='cursus',
+                             verbose_name='Club')
     name   = models.CharField(max_length=200)
     date   = models.DateField(help_text="Date de version du cursus")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
@@ -92,6 +98,8 @@ class Formation(models.Model):
         ACTIVE = 'active', 'En cours'
         CLOSED = 'closed', 'Terminée'
 
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, default=get_default_club, related_name='formations',
+                             verbose_name='Club')
     name       = models.CharField('Nom', max_length=200)
     cursus     = models.ForeignKey(Cursus, on_delete=models.PROTECT, related_name='formations', verbose_name='Cursus')
     start_date = models.DateField('Début', null=True, blank=True)
@@ -114,6 +122,8 @@ class Formation(models.Model):
 class Member(models.Model):
     """Élève. Le compte utilisateur (facultatif, rôle « élève ») donne accès à « Mon suivi » en lecture seule."""
 
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, default=get_default_club, related_name='members',
+                             verbose_name='Club')
     user        = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                        related_name='student_profile', verbose_name='Compte')
     first_name  = models.CharField('Prénom', max_length=150)

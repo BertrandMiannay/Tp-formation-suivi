@@ -3,7 +3,10 @@ from django.contrib import admin
 from .models import Season, Member, Cursus, CursusCategory, Skill, MemberSkill, SkillEvaluation, Formation, Enrollment
 
 
-admin.site.register(Season)
+@admin.register(Season)
+class SeasonAdmin(admin.ModelAdmin):
+    list_display = ('label', 'club', 'current')
+    list_filter  = ('club',)
 
 
 class EnrollmentInline(admin.TabularInline):
@@ -14,16 +17,16 @@ class EnrollmentInline(admin.TabularInline):
 
 @admin.register(Member)
 class MemberAdmin(admin.ModelAdmin):
-    list_display      = ('last_name', 'first_name', 'user', 'medical_certificate_date')
+    list_display      = ('last_name', 'first_name', 'club', 'user', 'medical_certificate_date')
     search_fields     = ('first_name', 'last_name', 'user__email')
-    list_filter       = ('enrollments__formation',)
+    list_filter       = ('club', 'enrollments__formation')
     autocomplete_fields = ['user']
 
 
 @admin.register(Formation)
 class FormationAdmin(admin.ModelAdmin):
-    list_display      = ('name', 'cursus', 'start_date', 'end_date', 'status')
-    list_filter       = ('status', 'cursus')
+    list_display      = ('name', 'club', 'cursus', 'start_date', 'end_date', 'status')
+    list_filter       = ('club', 'status', 'cursus')
     filter_horizontal = ('managers',)
     inlines           = [EnrollmentInline]
 
@@ -42,8 +45,8 @@ class CursusCategoryInline(admin.TabularInline):
 
 @admin.register(Cursus)
 class CursusAdmin(admin.ModelAdmin):
-    list_display = ('name', 'date', 'status')
-    list_filter  = ('status',)
+    list_display = ('name', 'club', 'date', 'status')
+    list_filter  = ('club', 'status')
     inlines      = [CursusCategoryInline]
 
 

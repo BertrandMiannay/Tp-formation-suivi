@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'userManagement.apps.UsermanagementConfig',
     'formation.apps.FormationConfig',
     'suivi.apps.SuiviConfig',
+    'clubs.apps.ClubsConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
