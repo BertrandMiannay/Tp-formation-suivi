@@ -47,13 +47,13 @@ class ClubIsolationTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         from django.contrib.auth import get_user_model
-        from django.contrib.auth.models import Group
+        from .testing import add_role
 
         from formation.models import CursusCategory, Enrollment, Skill, SkillEvaluation
         from suivi.models import Attendance, Comment
 
         cls.admin = get_user_model().objects.create_user('admin', 'admin@example.com', 'pwd')
-        cls.admin.groups.add(Group.objects.get(name='admin'))
+        add_role(cls.admin, 'admin')
 
         cls.home = Club.objects.get()
         cls.home_cursus = Cursus.objects.create(club=cls.home, name='Niveau 1', date=date(2026, 1, 1))
@@ -192,6 +192,8 @@ class ClubIsolationTestCase(TestCase):
 
     def test_active_club_from_session(self):
         from django.urls import reverse
+        from .testing import add_role
+        add_role(self.admin, 'admin', self.other)
         self._use_club(self.other)
         self.assertContains(self.client.get(reverse('formation-list')), 'Formation autre')
         self.assertNotContains(self.client.get(reverse('formation-list')), 'N1 maison')
@@ -216,3 +218,179 @@ class ClubIsolationTestCase(TestCase):
         session['club_id'] = 999999
         session.save()
         self.assertContains(self.client.get(reverse('formation-list')), 'N1 maison')
+
+
+class MultiClubRolesTestCase(TestCase):
+    """Un compte, plusieurs clubs : rôle propre à chaque club, club actif choisi parmi les siens,
+    comptes partagés jamais exposés d'un club à l'autre."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from .models import Membership
+        User = get_user_model()
+        cls.club_a = Club.objects.get()
+        cls.club_a.name = 'Alpha plongée'
+        cls.club_a.save()
+        cls.club_b = Club.objects.create(name='Club B')
+        # Paul : administrateur du club A, élève du club B.
+        cls.paul = User.objects.create_user('paul', 'paul@example.com', 'pwd')
+        Membership.objects.create(user=cls.paul, club=cls.club_a, role='admin')
+        Membership.objects.create(user=cls.paul, club=cls.club_b, role='student')
+        cls.paul_fiche_b = Member.objects.create(club=cls.club_b, user=cls.paul, first_name='Paul', last_name='Double')
+        cls.admin_b = User.objects.create_user('admin_b', 'admin_b@example.com', 'pwd')
+        Membership.objects.create(user=cls.admin_b, club=cls.club_b, role='admin')
+        cls.instructor_a = User.objects.create_user('moniteur_a', 'moniteur_a@example.com', 'pwd')
+        Membership.objects.create(user=cls.instructor_a, club=cls.club_a, role='instructor')
+        cls.instructor_b = User.objects.create_user('moniteur_b', 'moniteur_b@example.com', 'pwd')
+        Membership.objects.create(user=cls.instructor_b, club=cls.club_b, role='instructor')
+
+    def _choose(self, club):
+        from django.urls import reverse
+        return self.client.post(reverse('club-choose'), {'club_id': club.pk})
+
+    def test_role_depends_on_active_club(self):
+        from django.urls import reverse
+        self.client.force_login(self.paul)
+        self._choose(self.club_a)
+        self.assertEqual(self.client.get(reverse('userManagement:user_list')).status_code, 200)
+        self._choose(self.club_b)
+        self.assertEqual(self.client.get(reverse('userManagement:user_list')).status_code, 403)
+        self.assertRedirects(self.client.get(reverse('suivi-sessions')), reverse('home'))
+        response = self.client.get(reverse('suivi-mine'))
+        self.assertEqual([s['member'] for s in response.context['sheets']], [self.paul_fiche_b])
+        home = self.client.get(reverse('home'))
+        self.assertContains(home, 'Mon suivi')
+        self.assertContains(home, 'Club B')
+
+    def test_first_login_with_several_clubs_asks_for_a_club_then_remembers_it(self):
+        from django.urls import reverse
+        self.client.force_login(self.paul)
+        self.assertRedirects(self.client.get(reverse('home')), reverse('club-choose'))
+        response = self.client.get(reverse('club-choose'))
+        self.assertContains(response, 'Club B')
+        self.assertContains(response, 'Administrateur')
+        self._choose(self.club_b)
+        self.paul.refresh_from_db()
+        self.assertEqual(self.paul.last_club, self.club_b)
+        # Nouvelle connexion : le dernier club utilisé est rouvert.
+        self.client.logout()
+        self.client.force_login(self.paul)
+        response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.wsgi_request.club, self.club_b)
+
+    def test_cannot_choose_a_club_without_membership(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin_b)
+        self.assertEqual(self._choose(self.club_a).status_code, 404)
+        session = self.client.session
+        session['club_id'] = self.club_a.pk
+        session.save()
+        response = self.client.get(reverse('formation-list'))
+        self.assertEqual(response.wsgi_request.club, self.club_b)
+        # Un seul club : pas de sélecteur.
+        self.assertNotContains(response, 'club-switcher')
+
+    def test_superuser_reaches_every_club_as_admin(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        root = get_user_model().objects.create_superuser('root', 'root@example.com', 'pwd')
+        self.client.force_login(root)
+        self._choose(self.club_b)
+        self.assertEqual(self.client.get(reverse('userManagement:user_list')).status_code, 200)
+        self.assertContains(self.client.get(reverse('formation-list')), 'club-switcher')
+
+    def test_account_without_club(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        self.client.force_login(get_user_model().objects.create_user('seul', 'seul@example.com', 'pwd'))
+        self.assertContains(self.client.get(reverse('home')), "n'est rattaché à aucun club")
+        self.assertRedirects(self.client.get(reverse('suivi-sessions')), reverse('home'))
+
+    def test_staff_choices_limited_to_club(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin_b)
+        response = self.client.get(reverse('suivi-session-create'))
+        self.assertContains(response, 'moniteur_b')
+        self.assertNotContains(response, 'moniteur_a')
+        self.assertNotContains(self.client.get(reverse('formation-create')), 'moniteur_a')
+
+    def test_users_page_lists_only_club_members(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin_b)
+        response = self.client.get(reverse('userManagement:user_list'))
+        self.assertContains(response, 'moniteur_b')
+        self.assertNotContains(response, 'moniteur_a')
+        # Compte partagé : retiré du club, jamais supprimé ni réinitialisé depuis ce club.
+        self.assertContains(response, 'Retirer du club')
+        self.assertEqual(self.client.get(
+            reverse('userManagement:user_role', args=[self.instructor_a.pk])).status_code, 404)
+
+    def test_new_student_with_email_of_another_club_account_shares_it(self):
+        from django.urls import reverse
+        from .models import Membership
+        self.client.force_login(self.instructor_b)
+        response = self.client.post(reverse('eleve-create'), {
+            'first_name': 'Marc', 'last_name': 'Moniteur', 'email': 'Moniteur_A@example.com',
+        }, follow=True)
+        fiche = Member.objects.get(club=self.club_b, last_name='Moniteur')
+        self.assertEqual(fiche.user, self.instructor_a)
+        self.assertContains(response, 'Un compte existe déjà pour cet email')
+        self.assertNotContains(response, self.club_a.name)
+        self.assertEqual(self.instructor_a.role_in(self.club_b), 'student')
+        self.assertEqual(Membership.objects.get(user=self.instructor_a, club=self.club_a).role, 'instructor')
+        # Compte partagé : email verrouillé, pas de réinitialisation depuis le club B.
+        edit = self.client.get(reverse('eleve-edit', args=[fiche.pk]))
+        self.assertTrue(edit.context['form'].fields['email'].disabled)
+        self.assertFalse(self.client.get(reverse('suivi-student-detail', args=[fiche.pk])).context['can_reset_password'])
+        # Supprimer la fiche du club B garde le compte et son rôle dans le club A.
+        self.client.post(reverse('eleve-delete', args=[fiche.pk]))
+        self.assertTrue(type(self.instructor_a).objects.filter(pk=self.instructor_a.pk).exists())
+        self.assertFalse(Membership.objects.filter(user=self.instructor_a, club=self.club_b).exists())
+        self.assertTrue(Membership.objects.filter(user=self.instructor_a, club=self.club_a).exists())
+
+    def test_pending_invitation_of_another_club_is_never_shown(self):
+        from django.urls import reverse
+        from userManagement.views import create_invited_user
+        pending = create_invited_user('nouveau@example.com', club=self.club_a, role='student')
+        self.client.force_login(self.instructor_b)
+        self.client.post(reverse('eleve-create'), {'first_name': 'N', 'last_name': 'Nouveau', 'email': 'nouveau@example.com'})
+        fiche = Member.objects.get(club=self.club_b, last_name='Nouveau')
+        self.assertEqual(fiche.user, pending)
+        self.assertNotContains(self.client.get(reverse('suivi-student-detail', args=[fiche.pk])), str(pending.invite_token))
+        self.client.force_login(self.admin_b)
+        self.assertNotContains(self.client.get(reverse('userManagement:user_list')), str(pending.invite_token))
+
+    def test_accounts_of_another_club_are_not_attachable(self):
+        from django.urls import reverse
+        self.client.force_login(self.instructor_b)
+        response = self.client.get(reverse('eleve-create'))
+        self.assertNotContains(response, 'moniteur_a@example.com')
+        response = self.client.post(reverse('eleve-create'),
+                                    {'first_name': 'A', 'last_name': 'B', 'account': self.instructor_a.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Member.objects.filter(user=self.instructor_a).exists())
+
+    def test_invite_existing_account_adds_it_to_the_club(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin_b)
+        response = self.client.post(reverse('userManagement:invite'),
+                                    {'email': 'moniteur_a@example.com', 'role': 'instructor'}, follow=True)
+        self.assertContains(response, 'Un compte existe déjà')
+        self.assertEqual(self.instructor_a.role_in(self.club_b), 'instructor')
+        # Retirer du club B un compte qui sert aussi au club A : le compte reste.
+        self.client.post(reverse('userManagement:user_delete', args=[self.instructor_a.pk]))
+        self.assertTrue(type(self.instructor_a).objects.filter(pk=self.instructor_a.pk).exists())
+        self.assertFalse(self.instructor_a.memberships.filter(club=self.club_b).exists())
+        # Un compte du club B seulement est supprimé.
+        self.client.post(reverse('userManagement:user_delete', args=[self.instructor_b.pk]))
+        self.assertFalse(type(self.instructor_b).objects.filter(pk=self.instructor_b.pk).exists())
+
+    def test_role_change_only_affects_active_club(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin_b)
+        self.client.post(reverse('userManagement:user_role', args=[self.paul.pk]), {'role': 'instructor'})
+        roles = dict(self.paul.memberships.values_list('club_id', 'role'))
+        self.assertEqual(roles, {self.club_a.pk: 'admin', self.club_b.pk: 'instructor'})

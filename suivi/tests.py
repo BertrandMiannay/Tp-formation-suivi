@@ -2,10 +2,10 @@ import json
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
 
+from clubs.testing import add_role, default_club
 from formation.models import (
     Cursus, CursusCategory, Enrollment, Formation, Member, MemberSkill, Season, Skill, SkillEvaluation,
 )
@@ -17,9 +17,9 @@ class SuiviFixtures(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.instructor = User.objects.create_user('moniteur', 'moniteur@example.com', 'pwd')
-        cls.instructor.groups.add(Group.objects.get(name='instructor'))
+        add_role(cls.instructor, 'instructor')
         cls.student_user = User.objects.create_user('eleve', 'alice@example.com', 'pwd')
-        cls.student_user.groups.add(Group.objects.get(name='student'))
+        add_role(cls.student_user, 'student')
 
         cls.season = Season.objects.create(label='2026-2027', current=True)
         cls.cursus = Cursus.objects.create(name='Niveau 1', date=date(2026, 1, 1))
@@ -69,7 +69,7 @@ class SuiviTestCase(SuiviFixtures):
         self.assertContains(self.client.get(reverse('suivi-sessions')), 'Piscine')
 
         admin = get_user_model().objects.create_user('admin2', 'admin2@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         self.client.force_login(admin)
         self.client.post(reverse('saison-set-current', args=[self.season.pk]))
         session.refresh_from_db()
@@ -201,7 +201,7 @@ class SuiviTestCase(SuiviFixtures):
         self.assertTrue(comment.staff_only)
         # Modification du texte par un autre encadrant ; un texte vide est refusé
         other = get_user_model().objects.create_user('moniteur2', 'm2@example.com', 'pwd')
-        other.groups.add(Group.objects.get(name='instructor'))
+        add_role(other, 'instructor')
         self.client.force_login(other)
         self.client.post(url, {'comment_action': 'edit', f'comment_{comment.pk}_content': '  Texte corrigé '})
         comment.refresh_from_db()
@@ -285,7 +285,7 @@ class SuiviTestCase(SuiviFixtures):
         self.assertEqual(eve.email, 'eve@example.com')
         self.assertTrue(Enrollment.objects.filter(member=eve, formation=self.formation).exists())
         self.assertFalse(eve.user.is_active)
-        self.assertTrue(eve.user.groups.filter(name='student').exists())
+        self.assertTrue(eve.user.memberships.filter(role='student').exists())
 
         resp = self.client.get(reverse('suivi-student-detail', args=[eve.pk]))
         accept_url = reverse('userManagement:accept_invite', args=[eve.user.invite_token])
@@ -442,7 +442,7 @@ class SuiviTestCase(SuiviFixtures):
 
     def test_admin_pages_render(self):
         admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         self.client.force_login(admin)
         for name, args in [
             ('home', []), ('saison-gestion', []), ('saison-cursus', []), ('saison-cursus-creer', []),
@@ -476,7 +476,7 @@ class FormationWorkflowTestCase(SuiviFixtures):
 
     def _admin(self):
         admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         return admin
 
     def test_admin_creates_formation_instructor_cannot(self):
@@ -539,7 +539,7 @@ class FormationWorkflowTestCase(SuiviFixtures):
                                                                  'email': 'gina@example.com'})
         gina.refresh_from_db()
         self.assertFalse(gina.user.is_active)
-        self.assertTrue(gina.user.groups.filter(name='student').exists())
+        self.assertTrue(gina.user.memberships.filter(role='student').exists())
 
     def test_create_student_without_email(self):
         resp = self.client.post(reverse('eleve-create'), {'first_name': 'Hugo', 'last_name': 'Libre'})
@@ -576,7 +576,7 @@ class StudentAccountSecurityTests(SuiviFixtures):
 
     def test_staff_account_email_not_editable_from_student_sheet(self):
         admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         self.client.post(reverse('eleve-create'), {**self.STUDENT_FORM, 'email': 'chef@example.com'})
         member = Member.objects.get(first_name='Eve')
         self.assertEqual(member.user, admin)  # rattachement conservé (admin qui suit une formation)
@@ -609,7 +609,7 @@ class StudentFromAccountTests(SuiviFixtures):
         super().setUp()
         self.account = get_user_model().objects.create_user(
             'jdupont', 'jean@example.com', 'pwd', first_name='Jean', last_name='Dupont')
-        self.account.groups.add(Group.objects.get(name='instructor'))
+        add_role(self.account, 'instructor')
 
     def test_prefill_from_user_param(self):
         resp = self.client.get(reverse('eleve-create'), {'user': self.account.pk})
@@ -663,7 +663,7 @@ class StudentImportDeleteTests(SuiviFixtures):
         emma = Member.objects.get(first_name='Emma', last_name='Leroy')
         self.assertEqual(emma.email, 'emma@example.com')
         self.assertFalse(emma.user.is_active)
-        self.assertTrue(emma.user.groups.filter(name='student').exists())
+        self.assertTrue(emma.user.memberships.filter(role='student').exists())
         for first, last in [('Hugo', 'Roux'), ('Inès', 'Blanc')]:
             member = Member.objects.get(first_name=first, last_name=last)
             self.assertIsNone(member.user)
@@ -706,7 +706,7 @@ class StudentImportDeleteTests(SuiviFixtures):
 class CursusJsonExportTests(SuiviFixtures):
     def setUp(self):
         admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         self.client.force_login(admin)
 
     def test_export_downloads_reimportable_json(self):
@@ -737,7 +737,7 @@ class CursusJsonExportTests(SuiviFixtures):
 class CursusDeleteTests(SuiviFixtures):
     def setUp(self):
         admin = get_user_model().objects.create_user('chef', 'chef@example.com', 'pwd')
-        admin.groups.add(Group.objects.get(name='admin'))
+        add_role(admin, 'admin')
         self.client.force_login(admin)
         self.empty = Cursus.objects.create(name='Niveau 3', date=date(2026, 1, 1))
         cat = CursusCategory.objects.create(cursus=self.empty, name='Autonomie')

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Choisir un club{% endblock %}
+
+{% block content %}
+<h1>Choisir un club</h1>
+<p class="muted">Votre compte donne accès à plusieurs clubs. Vous pourrez en changer à tout moment depuis le menu.</p>
+<div class="club-choices">
+    {% for club, role_label in clubs %}
+    <form method="post" action="{% url 'club-choose' %}">
+        {% csrf_token %}
+        <input type="hidden" name="club_id" value="{{ club.pk }}">
+        <button type="submit" class="club-choice{% if club == request.club %} active{% endif %}">
+            <strong>{{ club.name }}</strong>
+            {% if role_label %}<span class="muted">{{ role_label }}</span>{% endif %}
+        </button>
+    </form>
+    {% empty %}
+    <p class="muted">Votre compte n'est rattaché à aucun club.</p>
+    {% endfor %}
+</div>
+{% endblock %}

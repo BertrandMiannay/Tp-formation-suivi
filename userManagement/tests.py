@@ -7,6 +7,7 @@ from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from clubs.testing import add_role, default_club
 from formation.models import Member
 
 from .models import Role
@@ -17,24 +18,28 @@ class RoleTests(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
-        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        add_role(cls.admin, Role.ADMIN)
         cls.instructor = User.objects.create_user('moniteur', 'moniteur@example.com', 'pwd')
-        cls.instructor.groups.add(Group.objects.get(name=Role.INSTRUCTOR))
+        add_role(cls.instructor, Role.INSTRUCTOR)
         cls.student = User.objects.create_user('eleve', 'eleve@example.com', 'pwd')
-        cls.student.groups.add(Group.objects.get(name=Role.STUDENT))
+        add_role(cls.student, Role.STUDENT)
 
-    def test_only_three_role_groups_exist(self):
-        self.assertEqual(set(Group.objects.values_list('name', flat=True)), {'student', 'instructor', 'admin'})
+    def test_role_groups_replaced_by_memberships(self):
+        self.assertFalse(Group.objects.exists())
 
     def test_role_flags(self):
         User = get_user_model()
         admin, instructor, student = (User.objects.get(pk=u.pk) for u in (self.admin, self.instructor, self.student))
+        for user in (admin, instructor, student):
+            self.assertIsNone(user.role)  # sans club actif, aucun rôle
+            user.active_club = default_club()
         self.assertEqual((admin.role, admin.is_administrator, admin.is_club_staff), (Role.ADMIN, True, True))
         self.assertEqual((instructor.role, instructor.is_administrator, instructor.is_club_staff),
                          (Role.INSTRUCTOR, False, True))
         self.assertEqual((student.role, student.is_administrator, student.is_club_staff), (Role.STUDENT, False, False))
         self.assertEqual(student.role_label, 'Élève')
         superuser = User.objects.create_superuser('root', 'root@example.com', 'pwd')
+        superuser.active_club = default_club()
         self.assertTrue(superuser.is_administrator)
 
     def test_access_by_role(self):
@@ -45,17 +50,17 @@ class RoleTests(TestCase):
             self.assertEqual(self.client.get(reverse('suivi-sessions')).status_code == 200, sessions_ok, user)
             self.assertEqual(self.client.get(reverse('userManagement:user_list')).status_code == 200, users_ok, user)
 
-    def test_change_role_replaces_group(self):
+    def test_change_role_replaces_role_in_club(self):
         self.client.force_login(self.admin)
         self.client.post(reverse('userManagement:user_role', args=[self.student.pk]), {'role': Role.INSTRUCTOR})
-        self.assertEqual(list(self.student.groups.values_list('name', flat=True)), ['instructor'])
+        self.assertEqual(list(self.student.memberships.values_list('role', flat=True)), ['instructor'])
 
     def test_invite_assigns_role(self):
         self.client.force_login(self.admin)
         self.client.post(reverse('userManagement:invite'), {'email': 'new@example.com', 'role': Role.INSTRUCTOR})
         user = get_user_model().objects.get(email='new@example.com')
         self.assertFalse(user.is_active)
-        self.assertEqual(user.role, Role.INSTRUCTOR)
+        self.assertEqual(user.role_in(default_club()), Role.INSTRUCTOR)
 
 
 
@@ -64,11 +69,11 @@ class PasswordResetLinkTests(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
-        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        add_role(cls.admin, Role.ADMIN)
         cls.instructor = User.objects.create_user('moniteur', 'moniteur@example.com', 'pwd')
-        cls.instructor.groups.add(Group.objects.get(name=Role.INSTRUCTOR))
+        add_role(cls.instructor, Role.INSTRUCTOR)
         cls.student = User.objects.create_user('eleve', 'eleve@example.com', 'old-password')
-        cls.student.groups.add(Group.objects.get(name=Role.STUDENT))
+        add_role(cls.student, Role.STUDENT)
 
     def generate_link(self, actor, target):
         self.client.force_login(actor)
@@ -118,7 +123,7 @@ class InitialAdminMigrationTests(TestCase):
         user = get_user_model().objects.get(username='chef')
         self.assertTrue(user.is_superuser)
         self.assertTrue(user.check_password('s3cret'))
-        self.assertTrue(user.groups.filter(name=Role.ADMIN).exists())
+        self.assertTrue(user.is_staff)
 
     def test_existing_admin_keeps_password(self):
         self.run_migration(DJANGO_SUPERUSER_USERNAME='chef', DJANGO_SUPERUSER_PASSWORD='s3cret')
@@ -136,9 +141,9 @@ class AccountHardeningTests(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
-        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        add_role(cls.admin, Role.ADMIN)
         cls.student = User.objects.create_user('eleve', 'eleve@example.com', 'Ancien-Mot-2026')
-        cls.student.groups.add(Group.objects.get(name=Role.STUDENT))
+        add_role(cls.student, Role.STUDENT)
 
     def test_only_login_and_logout_allauth_pages(self):
         self.assertEqual(self.client.get(reverse('account_login')).status_code, 200)
@@ -148,7 +153,7 @@ class AccountHardeningTests(TestCase):
 
     def test_accept_invite_enforces_password_validators(self):
         from .views import create_invited_user
-        user = create_invited_user('nouveau@example.com', Role.STUDENT)
+        user = create_invited_user('nouveau@example.com', club=default_club(), role=Role.STUDENT)
         url = reverse('userManagement:accept_invite', args=[user.invite_token])
         response = self.client.post(url, {'username': 'nouveau', 'password1': '1234', 'password2': '1234'})
         self.assertEqual(response.status_code, 200)
@@ -179,7 +184,7 @@ class AccountHardeningTests(TestCase):
         self.assertEqual(response.context['back_url'], '/suivi/eleves/')
 
     def test_user_list_escapes_email_in_javascript(self):
-        get_user_model().objects.create_user('piege', "x'-alert`1`-'@a.fr", 'pwd')
+        add_role(get_user_model().objects.create_user('piege', "x'-alert`1`-'@a.fr", 'pwd'), Role.STUDENT)
         self.client.force_login(self.admin)
         content = self.client.get(reverse('userManagement:user_list')).content.decode()
         self.assertNotIn("Supprimer x&#x27;", content)
@@ -202,7 +207,7 @@ class SuperuserProtectionTests(TestCase):
         User = get_user_model()
         cls.root = User.objects.create_superuser('root', 'root@example.com', 'pwd')
         cls.admin = User.objects.create_user('admin', 'admin@example.com', 'pwd')
-        cls.admin.groups.add(Group.objects.get(name=Role.ADMIN))
+        add_role(cls.admin, Role.ADMIN)
 
     def test_admin_cannot_take_over_or_delete_superuser(self):
         self.client.force_login(self.admin)
@@ -223,7 +228,7 @@ class SuperuserProtectionTests(TestCase):
     def test_invite_rejects_existing_email_whatever_the_case(self):
         self.client.force_login(self.admin)
         response = self.client.post(reverse('userManagement:invite'), {'email': 'Admin@Example.com', 'role': Role.INSTRUCTOR})
-        self.assertFormError(response.context['form'], 'email', 'Un utilisateur avec cet email existe déjà.')
+        self.assertFormError(response.context['form'], 'email', 'Ce compte est déjà membre du club.')
         self.assertEqual(get_user_model().objects.filter(email__iexact='admin@example.com').count(), 1)
 
     def test_django_admin_login_goes_through_allauth(self):
@@ -245,9 +250,9 @@ class PendingStaffInvitationTests(TestCase):
         from .views import create_invited_user
         User = get_user_model()
         cls.instructor = User.objects.create_user('encadrant', 'enc@example.com', 'pwd')
-        cls.instructor.groups.add(Group.objects.get(name=Role.INSTRUCTOR))
-        cls.pending_admin = create_invited_user('chef@example.com', Role.ADMIN)
-        cls.pending_student = create_invited_user('eleve@example.com', Role.STUDENT)
+        add_role(cls.instructor, Role.INSTRUCTOR)
+        cls.pending_admin = create_invited_user('chef@example.com', club=default_club(), role=Role.ADMIN)
+        cls.pending_student = create_invited_user('eleve@example.com', club=default_club(), role=Role.STUDENT)
 
     def setUp(self):
         self.client.force_login(self.instructor)

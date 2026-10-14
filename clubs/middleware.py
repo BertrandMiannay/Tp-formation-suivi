@@ -1,24 +1,41 @@
-from django.utils.functional import SimpleLazyObject
-
-from .models import Club, get_default_club
+from .models import Club
 
 SESSION_KEY = 'club_id'
 
 
 def get_active_club(request):
-    """Club sur lequel travaillent les vues : celui choisi en session s'il existe, sinon le club par défaut.
-    (Le choix du club et le contrôle d'appartenance arrivent avec les rôles par club.)"""
-    club_id = request.session.get(SESSION_KEY) if hasattr(request, 'session') else None
-    club = Club.objects.filter(pk=club_id).first() if club_id else None
-    return club or Club.objects.get(pk=get_default_club())
+    """Club actif d'un compte connecté, parmi ses clubs : celui choisi dans la session, sinon le dernier
+    utilisé, sinon le premier (par nom). None si le compte n'appartient à aucun club."""
+    user = request.user
+    if not user.is_authenticated:
+        return None
+    clubs = user.clubs()
+    for club_id in (request.session.get(SESSION_KEY), user.last_club_id):
+        if club_id:
+            club = clubs.filter(pk=club_id).first()
+            if club:
+                return club
+    return clubs.order_by('name', 'pk').first()
+
+
+def set_active_club(request, club):
+    """Choix du club actif (club accessible au compte, vérifié par l'appelant) : session et dernier club utilisé."""
+    request.session[SESSION_KEY] = club.pk
+    user = request.user
+    if user.last_club_id != club.pk:
+        user.last_club = club
+        user.save(update_fields=['last_club'])
+    user.active_club = request.club = club
 
 
 class ActiveClubMiddleware:
-    """Expose le club actif dans `request.club` (évalué à la première utilisation)."""
+    """Expose le club actif dans `request.club` et `request.user.active_club` (rôle du compte dans ce club)."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        request.club = SimpleLazyObject(lambda: get_active_club(request))
+        request.club = get_active_club(request)
+        if request.user.is_authenticated:
+            request.user.active_club = request.club
         return self.get_response(request)

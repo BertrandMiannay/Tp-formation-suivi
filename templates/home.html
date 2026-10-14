@@ -4,6 +4,11 @@
 
 {% block content %}
 <h1>Bienvenue, {{ request.user.username }}</h1>
+{% if request.club %}
+    {% if user_clubs|length > 1 %}<p class="muted">Club : <strong>{{ request.club }}</strong> · <a href="{% url 'club-choose' %}">changer de club</a></p>{% endif %}
+{% else %}
+    <p class="muted">Votre compte n'est rattaché à aucun club : contactez l'administrateur de votre club.</p>
+{% endif %}
 
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
     {% for app in apps %}
