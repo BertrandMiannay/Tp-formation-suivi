@@ -26,7 +26,7 @@ class TrainingSessionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        formation_qs = Formation.objects.active()
+        formation_qs = Formation.objects.active().filter(club=self.instance.club)
         if self.instance.pk:
             formation_qs = formation_qs | self.instance.formations.all()
         self.fields['formations'].queryset = formation_qs.distinct().order_by('name')
@@ -59,7 +59,7 @@ class CommentForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.member = member
         self.fields['session'].queryset = (
-            TrainingSession.objects.filter(attendances__member=member).distinct().order_by('-date', '-pk')
+            TrainingSession.objects.filter(club=member.club, attendances__member=member).distinct().order_by('-date', '-pk')
         )
         self.fields['skill'].queryset = (
             Skill.objects.filter(category__cursus__in=member.cursus_ids()).select_related('category__cursus')
