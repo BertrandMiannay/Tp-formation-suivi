@@ -1,3 +1,4 @@
+import io
 from datetime import date
 
 from django.test import TestCase
@@ -394,3 +395,131 @@ class MultiClubRolesTestCase(TestCase):
         self.client.post(reverse('userManagement:user_role', args=[self.paul.pk]), {'role': 'instructor'})
         roles = dict(self.paul.memberships.values_list('club_id', 'role'))
         self.assertEqual(roles, {self.club_a.pk: 'admin', self.club_b.pk: 'instructor'})
+
+
+class ClubManagementTestCase(TestCase):
+    """Page « Clubs » du super-admin : création, renommage, administrateurs, suppression."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from .testing import add_role
+        User = get_user_model()
+        cls.root = User.objects.create_superuser('root', 'root@example.com', 'pwd')
+        cls.club = Club.objects.get()
+        cls.admin = add_role(User.objects.create_user('admin', 'admin@example.com', 'pwd'), 'admin')
+
+    def setUp(self):
+        self.client.force_login(self.root)
+
+    def test_only_superadmin_reaches_club_pages(self):
+        from django.urls import reverse
+        self.client.force_login(self.admin)
+        for url in (reverse('club-list'), reverse('club-create'), reverse('club-detail', args=[self.club.pk])):
+            self.assertRedirects(self.client.get(url), reverse('home'))
+        self.client.post(reverse('club-delete', args=[self.club.pk]), {'confirm_name': self.club.name})
+        self.assertTrue(Club.objects.filter(pk=self.club.pk).exists())
+        self.assertNotContains(self.client.get(reverse('home')), 'Super-admin')
+
+    def test_superadmin_label_and_nav_link(self):
+        from django.urls import reverse
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, 'Super-admin')
+        self.assertContains(response, reverse('club-list'))
+
+    def test_create_club_with_new_admin_invitation(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        response = self.client.post(reverse('club-create'), {'name': 'Nouveau club', 'admin_email': 'Chef@Example.com'})
+        club = Club.objects.get(name='Nouveau club')
+        self.assertRedirects(response, reverse('club-detail', args=[club.pk]))
+        chef = get_user_model().objects.get(email='chef@example.com')
+        self.assertFalse(chef.is_active)
+        self.assertEqual(chef.role_in(club), 'admin')
+        self.assertContains(self.client.get(response.url), str(chef.invite_token))
+        # Nom unique.
+        response = self.client.post(reverse('club-create'), {'name': 'Nouveau club'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Club.objects.filter(name='Nouveau club').count(), 1)
+
+    def test_existing_account_named_admin_keeps_its_other_clubs(self):
+        from django.urls import reverse
+        response = self.client.post(reverse('club-create'), {'name': 'Club B', 'admin_email': 'admin@example.com'})
+        club_b = Club.objects.get(name='Club B')
+        self.assertEqual(self.admin.role_in(club_b), 'admin')
+        self.assertEqual(self.admin.role_in(self.club), 'admin')
+        self.assertNotContains(self.client.get(response.url), 'Invitation envoyée')
+
+    def test_rename_and_manage_admins(self):
+        from django.urls import reverse
+        from .models import Membership
+        url = reverse('club-detail', args=[self.club.pk])
+        self.client.post(url, {'_action': 'rename', 'name': 'BO Touraine Plongée'})
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.name, 'BO Touraine Plongée')
+
+        # Un membre existant est promu administrateur.
+        from django.contrib.auth import get_user_model
+        from .testing import add_role
+        moniteur = add_role(get_user_model().objects.create_user('moniteur', 'moniteur@example.com', 'pwd'), 'instructor')
+        self.client.post(url, {'_action': 'add_admin', 'email': 'moniteur@example.com'})
+        self.assertEqual(moniteur.role_in(self.club), 'admin')
+
+        # Retirer un administrateur supprime son rôle ; une invitation jamais acceptée disparaît.
+        self.client.post(url, {'_action': 'add_admin', 'email': 'invite@example.com'})
+        invite = get_user_model().objects.get(email='invite@example.com')
+        for user in (moniteur, invite):
+            membership = Membership.objects.get(user=user, club=self.club)
+            self.client.post(url, {'_action': 'remove_admin', 'membership_pk': membership.pk})
+        self.assertFalse(Membership.objects.filter(user=moniteur, club=self.club).exists())
+        self.assertTrue(get_user_model().objects.filter(pk=moniteur.pk).exists())
+        self.assertFalse(get_user_model().objects.filter(pk=invite.pk).exists())
+
+    def test_delete_club_requires_typed_name_and_no_active_student(self):
+        from django.urls import reverse
+        from formation.models import Enrollment
+        other = Club.objects.create(name='Club à supprimer')
+        cursus = Cursus.objects.create(club=other, name='N1', date=date(2026, 1, 1))
+        formation = Formation.objects.create(club=other, name='N1 2026', cursus=cursus)
+        member = Member.objects.create(club=other, first_name='Léa', last_name='Martin')
+        enrollment = Enrollment.objects.create(member=member, formation=formation)
+        url = reverse('club-delete', args=[other.pk])
+
+        self.client.post(url, {'confirm_name': 'Club à supprimer'})
+        self.assertTrue(Club.objects.filter(pk=other.pk).exists())  # élève en formation
+
+        enrollment.status = Enrollment.Status.COMPLETED
+        enrollment.save()
+        self.client.post(url, {'confirm_name': 'mauvais nom'})
+        self.assertTrue(Club.objects.filter(pk=other.pk).exists())
+
+        response = self.client.post(url, {'confirm_name': 'Club à supprimer'})
+        self.assertRedirects(response, reverse('club-list'))
+        self.assertFalse(Club.objects.filter(pk=other.pk).exists())
+        self.assertFalse(Member.objects.filter(pk=member.pk).exists())
+
+    def test_last_club_cannot_be_deleted(self):
+        from django.urls import reverse
+        self.client.post(reverse('club-delete', args=[self.club.pk]), {'confirm_name': self.club.name})
+        self.assertTrue(Club.objects.filter(pk=self.club.pk).exists())
+
+
+class MakeSuperadminCommandTests(TestCase):
+    def test_promote_and_demote(self):
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        User = get_user_model()
+        user = User.objects.create_user('Bertrand', 'b@example.com', 'pwd')
+        call_command('make_superadmin', 'bertrand', stdout=io.StringIO())
+        user.refresh_from_db()
+        self.assertTrue(user.is_superuser and user.is_staff)
+        with self.assertRaises(CommandError):  # dernier super-admin
+            call_command('make_superadmin', 'bertrand', '--remove', stdout=io.StringIO())
+        User.objects.create_superuser('root', 'root@example.com', 'pwd')
+        call_command('make_superadmin', 'bertrand', '--remove', stdout=io.StringIO())
+        user.refresh_from_db()
+        self.assertFalse(user.is_superuser or user.is_staff)
+        with self.assertRaises(CommandError):
+            call_command('make_superadmin', 'inconnu', stdout=io.StringIO())

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Clubs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Clubs</h1>
+    <a href="{% url 'club-create' %}" class="btn btn-primary">+ Nouveau club</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Club</th>
+            <th>Élèves</th>
+            <th>Équipe encadrante</th>
+            <th>Formations en cours</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for club in clubs %}
+        <tr>
+            <td><a href="{% url 'club-detail' club.pk %}"><strong>{{ club.name }}</strong></a>{% if club == request.club %} <span class="muted">(club actif)</span>{% endif %}</td>
+            <td data-label="Élèves">{{ club.member_count }}</td>
+            <td data-label="Équipe encadrante">{{ club.staff_count }}</td>
+            <td data-label="Formations en cours">{{ club.formation_count }}</td>
+            <td><a href="{% url 'club-detail' club.pk %}" class="btn btn-secondary">Gérer</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

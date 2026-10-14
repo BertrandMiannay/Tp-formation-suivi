@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ club.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ club.name }}</h1>
+    <div class="actions">
+        {% if club != request.club %}
+        <form method="post" action="{% url 'club-choose' %}">
+            {% csrf_token %}
+            <input type="hidden" name="club_id" value="{{ club.pk }}">
+            <button type="submit" class="btn btn-primary">Ouvrir ce club</button>
+        </form>
+        {% endif %}
+        <a href="{% url 'club-list' %}" class="btn btn-secondary">Tous les clubs</a>
+    </div>
+</div>
+
+<p class="muted">{{ counts.members }} élève{{ counts.members|pluralize }} dont {{ counts.active_students }} en formation · {{ counts.formations }} formation{{ counts.formations|pluralize }} · {{ counts.sessions }} séance{{ counts.sessions|pluralize }} · {{ counts.memberships }} compte{{ counts.memberships|pluralize }}</p>
+
+<div class="form-card" style="margin-top:1.5rem;">
+    <h2 style="font-size:1.15rem; margin-bottom:1rem;">Nom du club</h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="_action" value="rename">
+        <div class="form-group">
+            {{ rename_form.name }}
+            {% if rename_form.name.errors %}<p style="color:#dc3545; font-size:0.875rem; margin-top:0.25rem;">{{ rename_form.name.errors.0 }}</p>{% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">Renommer</button>
+    </form>
+</div>
+
+<div class="form-card" style="margin-top:1.5rem; max-width:none;">
+    <h2 style="font-size:1.15rem; margin-bottom:1rem;">Administrateurs du club</h2>
+    {% for row in admins %}
+    <div class="club-admin-row">
+        <div class="club-admin-info">
+            {% if row.user.is_active %}<strong>{{ row.user.username }}</strong>{% else %}<span style="color:#e67e22;">Invitation envoyée</span>{% endif %}
+            <span class="muted">{{ row.user.email }}</span>
+            {% if row.invite_url %}
+            <div style="margin-top:0.4rem; display:flex; gap:0.4rem; align-items:center;">
+                <input type="text" id="invite-url-{{ row.user.pk }}" value="{{ row.invite_url }}" readonly style="font-size:0.8rem; background:#f8f9fa;">
+                <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('invite-url-{{ row.user.pk }}').value).then(() => { this.textContent='Copié !'; setTimeout(() => this.textContent='Copier', 2000); })"
+                        class="btn btn-secondary">Copier</button>
+            </div>
+            {% endif %}
+        </div>
+        <form method="post" onsubmit="return confirm('Retirer {{ row.user.email|escapejs }} des administrateurs du club ?');">
+            {% csrf_token %}
+            <input type="hidden" name="_action" value="remove_admin">
+            <input type="hidden" name="membership_pk" value="{{ row.membership.pk }}">
+            <button type="submit" class="btn btn-danger">Retirer</button>
+        </form>
+    </div>
+    {% empty %}
+    <p class="muted">Aucun administrateur : nommez-en un pour qu'il gère le club (saisons, cursus, formations, utilisateurs).</p>
+    {% endfor %}
+
+    <form method="post" style="margin-top:1.25rem;">
+        {% csrf_token %}
+        <input type="hidden" name="_action" value="add_admin">
+        <div class="form-group">
+            <label for="{{ admin_form.email.id_for_label }}">Nommer un administrateur (email)</label>
+            {{ admin_form.email }}
+            <p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">Compte existant : il devient administrateur du club (avec ses identifiants habituels). Sinon une invitation est créée.</p>
+            {% if admin_form.email.errors %}<p style="color:#dc3545; font-size:0.875rem; margin-top:0.25rem;">{{ admin_form.email.errors.0 }}</p>{% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">Nommer</button>
+    </form>
+</div>
+
+<div class="form-card danger-zone" id="supprimer" style="margin-top:1.5rem;">
+    <h2 style="font-size:1.15rem; margin-bottom:1rem;">Supprimer le club</h2>
+    {% if deletable %}
+    <p style="margin-bottom:1rem;">Supprime définitivement le club et <strong>toutes ses données</strong> : saisons, cursus, formations, {{ counts.members }} fiche{{ counts.members|pluralize }} élève, {{ counts.sessions }} séance{{ counts.sessions|pluralize }}, présences, évaluations et commentaires. Les comptes sont conservés, sans accès à ce club.</p>
+    <form method="post" action="{% url 'club-delete' club.pk %}">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="confirm-name">Pour confirmer, saisissez le nom du club : <strong>{{ club.name }}</strong></label>
+            <input type="text" id="confirm-name" name="confirm_name" autocomplete="off" required>
+        </div>
+        <button type="submit" class="btn btn-danger">Supprimer définitivement</button>
+    </form>
+    {% else %}
+    <p class="muted">{{ deletion_blocker }}</p>
+    {% endif %}
+</div>
+{% endblock %}

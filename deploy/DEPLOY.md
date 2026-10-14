@@ -128,7 +128,8 @@ Elle survit aux mises à jour et aux `docker compose down` (mais pas à `down -v
 docker compose logs -f                                   # logs
 docker compose ps                                        # état (healthy / unhealthy)
 docker compose restart                                   # redémarrer
-docker compose exec web python manage.py createsuperuser # créer un administrateur
+docker compose exec web python manage.py createsuperuser # créer un super-admin
+docker compose exec web python manage.py make_superadmin <utilisateur>  # donner les droits de super-admin à un compte existant (--remove pour les retirer)
 docker compose exec web python manage.py changepassword <utilisateur>
 docker compose exec web python manage.py shell           # shell Django
 ```
