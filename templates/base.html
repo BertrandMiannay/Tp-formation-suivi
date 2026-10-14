@@ -32,6 +32,9 @@
                 <a href="{% url 'saison-gestion' %}">Saisons et cursus</a>
                 <a href="/users/">Utilisateurs</a>
             {% endif %}
+            {% if user.is_superuser %}
+                <a href="{% url 'club-list' %}"{% if active_tab == 'clubs' %} class="active"{% endif %}>Clubs</a>
+            {% endif %}
             <span class="spacer"></span>
             {% if user_clubs|length > 1 %}
                 <details class="club-switcher">
@@ -50,7 +53,7 @@
             {% elif request.club %}
                 <span class="club-name">{{ request.club }}</span>
             {% endif %}
-            <a href="{% url 'userManagement:change_password' %}">{{ user.username }}{% if user.role %} · {{ user.role_label }}{% endif %}</a>
+            <a href="{% url 'userManagement:change_password' %}">{{ user.username }}{% if user.is_superuser %} · Super-admin{% elif user.role %} · {{ user.role_label }}{% endif %}</a>
             <a href="/accounts/logout/">Déconnexion</a>
         </div>
     {% else %}

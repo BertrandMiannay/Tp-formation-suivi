@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Nouveau club{% endblock %}
+
+{% block content %}
+<div class="form-card">
+    <h1>Nouveau club</h1>
+    <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<p class="muted" style="font-size:0.85rem; margin-top:0.25rem;">{{ field.help_text }}</p>{% endif %}
+                {% if field.errors %}<p style="color:#dc3545; font-size:0.875rem; margin-top:0.25rem;">{{ field.errors.0 }}</p>{% endif %}
+            </div>
+        {% endfor %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Créer le club</button>
+            <a href="{% url 'club-list' %}" class="btn btn-secondary">Retour</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

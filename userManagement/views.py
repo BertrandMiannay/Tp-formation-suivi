@@ -44,6 +44,7 @@ def _make_permission_decorator(check_fn):
 
 admin_required = _make_permission_decorator(lambda user: user.is_administrator)
 club_staff_required = _make_permission_decorator(lambda user: user.is_club_staff)
+superadmin_required = _make_permission_decorator(lambda user: user.is_superuser)
 
 User = get_user_model()
 
@@ -168,6 +169,12 @@ class HomeView(LoginRequiredMixin, TemplateView):
                 'description': 'Gérer les comptes, les rôles et les invitations.',
                 'url': '/users/',
                 'visible': user.is_administrator,
+            },
+            {
+                'title': 'Clubs',
+                'description': 'Super-admin : créer, renommer et supprimer les clubs, nommer leurs administrateurs.',
+                'url': '/clubs/',
+                'visible': user.is_superuser,
             },
         ]
         return ctx
